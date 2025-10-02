@@ -139,15 +139,15 @@ export default function QuizQuestClient() {
 
 
   useEffect(() => {
-    if (gameState !== 'PLAYING') return;
+    if (gameState !== 'PLAYING' || !currentProblem) return;
 
-    if (detectedFingers > 0 && detectedFingers <= 4) {
+    if (detectedFingers > 0 && detectedFingers <= currentProblem.options.length) {
         // Start holding
         setPotentialAnswer(detectedFingers);
         setHoldTime(ANSWER_HOLD_SECONDS);
         setGameState('HOLDING');
     }
-  }, [detectedFingers, gameState]);
+  }, [detectedFingers, gameState, currentProblem]);
 
   useEffect(() => {
     if(gameState === 'HOLDING') {
@@ -271,7 +271,7 @@ export default function QuizQuestClient() {
                 </div>
                 <div className="flex flex-col items-center">
                    <span className="text-muted-foreground text-sm flex items-center gap-1"><Timer className="h-4 w-4" /> TIME</span>
-                  <span className="font-headline text-4xl w-20 text-center">{isThinking ? timeLeft : holdTime}</span>
+                  <span className="font-headline text-4xl w-20 text-center">{isThinking ? timeLeft : isHolding ? holdTime : '...'}</span>
                 </div>
               </div>
 
@@ -299,3 +299,5 @@ export default function QuizQuestClient() {
     </div>
   );
 }
+
+    
