@@ -11,10 +11,11 @@ import { Progress } from '@/components/ui/progress';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-type GameState = 'IDLE' | 'LOADING' | 'PLAYING' | 'FEEDBACK' | 'LOADING_PROBLEM';
+type GameState = 'IDLE' | 'LOADING' | 'PLAYING' | 'HOLDING' | 'FEEDBACK' | 'LOADING_PROBLEM';
 
 const FEEDBACK_DURATION = 1500;
 const PROBLEM_TIMER_SECONDS = 15;
+const ANSWER_HOLD_SECONDS = 3;
 
 export default function MathChallengeClient() {
   const { videoRef, canvasRef, detectedFingers, startVideo, stopVideo, isLoading: isHandTrackingLoading, error: handTrackingError } = useHandTracking();
@@ -28,7 +29,9 @@ export default function MathChallengeClient() {
   const [pastScores, setPastScores] = useState<number[]>([]);
   const [feedback, setFeedback] = useState<'correct' | 'incorrect' | null>(null);
   const [timeLeft, setTimeLeft] = useState(PROBLEM_TIMER_SECONDS);
-  const [lastAnswer, setLastAnswer] = useState<number | null>(null);
+  const [holdTime, setHoldTime] = useState(ANSWER_HOLD_SECONDS);
+  const [potentialAnswer, setPotentialAnswer] = useState<number | null>(null);
+  const [lastSubmittedAnswer, setLastSubmittedAnswer] = useState<number | null>(null);
 
   useEffect(() => {
     if (handTrackingError) {
@@ -75,51 +78,69 @@ export default function MathChallengeClient() {
     await fetchNewProblem();
   }, [startVideo, fetchNewProblem]);
   
-  const handleAnswer = useCallback((answer: 'correct' | 'incorrect') => {
-      setFeedback(answer);
+  const handleAnswer = useCallback((answer: 'correct' | 'incorrect', submitted: number | null) => {
       setGameState('FEEDBACK');
+      setFeedback(answer);
+      setLastSubmittedAnswer(submitted);
       if (answer === 'correct') {
           setScore(s => s + 1);
       }
-      if(score > 0){
+      if(score > 0 && answer === 'incorrect'){
           setPastScores(ps => [...ps, score]);
       }
   }, [score]);
 
+  const resetForNextQuestion = useCallback(() => {
+    setFeedback(null);
+    setPotentialAnswer(null);
+    setLastSubmittedAnswer(null);
+    fetchNewProblem();
+  }, [fetchNewProblem]);
 
   useEffect(() => {
-    if (gameState === 'FEEDBACK') {
-      const timer = setTimeout(() => {
-        setFeedback(null);
-        setLastAnswer(null);
-        fetchNewProblem();
-      }, FEEDBACK_DURATION);
-      return () => clearTimeout(timer);
-    }
-  }, [gameState, fetchNewProblem]);
+    let timer: NodeJS.Timeout | undefined;
 
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
     if (gameState === 'PLAYING' && timeLeft > 0) {
-      timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
+      timer = setTimeout(() => setTimeLeft(t => t - 1), 1000);
     } else if (gameState === 'PLAYING' && timeLeft === 0) {
-      handleAnswer('incorrect');
+      // Time's up for thinking
+      handleAnswer('incorrect', null);
+    } else if (gameState === 'HOLDING' && holdTime > 0) {
+        timer = setTimeout(() => setHoldTime(t => t - 1), 1000);
+    } else if (gameState === 'HOLDING' && holdTime === 0) {
+        // Successfully held the answer
+        if (potentialAnswer !== null && currentProblem) {
+            const isCorrect = potentialAnswer === currentProblem.solution;
+            handleAnswer(isCorrect ? 'correct' : 'incorrect', potentialAnswer);
+        }
+    } else if (gameState === 'FEEDBACK') {
+      timer = setTimeout(resetForNextQuestion, FEEDBACK_DURATION);
     }
+
     return () => clearTimeout(timer);
-  }, [gameState, timeLeft, handleAnswer]);
+  }, [gameState, timeLeft, holdTime, potentialAnswer, currentProblem, handleAnswer, resetForNextQuestion]);
 
   useEffect(() => {
-    if (gameState !== 'PLAYING' || feedback) return;
+    if (gameState !== 'PLAYING' || !currentProblem) return;
 
-    if (detectedFingers !== lastAnswer && detectedFingers > 0) {
-       setLastAnswer(detectedFingers);
-      if (currentProblem && detectedFingers === currentProblem.solution) {
-        handleAnswer('correct');
-      }
-    } else if (detectedFingers === 0) {
-      setLastAnswer(null);
+    // A potential answer is any number of fingers shown
+    if (detectedFingers > 0) {
+        setPotentialAnswer(detectedFingers);
+        setHoldTime(ANSWER_HOLD_SECONDS);
+        setGameState('HOLDING');
     }
-  }, [detectedFingers, currentProblem, gameState, lastAnswer, feedback, handleAnswer]);
+  }, [detectedFingers, gameState, currentProblem]);
+  
+  useEffect(() => {
+    if(gameState === 'HOLDING') {
+      if (detectedFingers !== potentialAnswer) {
+        // User changed their mind, go back to playing
+        setPotentialAnswer(null);
+        setGameState('PLAYING');
+      }
+    }
+  }, [detectedFingers, potentialAnswer, gameState]);
+
 
   const renderGameState = () => {
     if (gameState === 'IDLE') {
@@ -127,7 +148,7 @@ export default function MathChallengeClient() {
         <div className="flex flex-col items-center justify-center text-center">
           <h2 className="font-headline text-3xl mb-4">Ready for a Challenge?</h2>
           <p className="text-muted-foreground mb-8 max-w-md">
-            Use your hands to solve math problems. The camera will detect how many fingers you're holding up.
+            Use your hands to solve math problems. The camera will detect how many fingers you're holding up. Hold your answer to lock it in.
           </p>
           {isMobile && (
              <Alert className="mb-4">
@@ -144,6 +165,8 @@ export default function MathChallengeClient() {
     }
 
     const showLoading = gameState === 'LOADING' || isHandTrackingLoading;
+    const isThinking = gameState === 'PLAYING';
+    const isHolding = gameState === 'HOLDING';
 
     return (
       <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
@@ -183,14 +206,26 @@ export default function MathChallengeClient() {
                 </div>
                 <div className="flex flex-col items-center">
                   <span className="text-muted-foreground text-sm flex items-center gap-1"><Hand className="h-4 w-4" /> GUESS</span>
-                  <span className="font-headline text-4xl">{detectedFingers}</span>
+                  <span className="font-headline text-4xl">{potentialAnswer ?? detectedFingers ?? '?'}</span>
                 </div>
                 <div className="flex flex-col items-center">
                    <span className="text-muted-foreground text-sm flex items-center gap-1"><Timer className="h-4 w-4" /> TIME</span>
-                  <span className="font-headline text-4xl w-20 text-center">{timeLeft}</span>
+                  <span className="font-headline text-4xl w-20 text-center">{isThinking ? timeLeft : isHolding ? holdTime : '...'}</span>
                 </div>
               </div>
-              <Progress value={(timeLeft / PROBLEM_TIMER_SECONDS) * 100} className="w-full h-2 mt-4" />
+               
+               {isThinking && (
+                 <div className="mt-2 text-center">
+                   <p className="text-sm text-muted-foreground">Show your answer!</p>
+                   <Progress value={(timeLeft / PROBLEM_TIMER_SECONDS) * 100} className="w-full h-2 mt-1" />
+                 </div>
+              )}
+               {isHolding && (
+                 <div className="mt-2 text-center">
+                   <p className="text-sm text-muted-foreground">Hold your answer to confirm!</p>
+                   <Progress value={((ANSWER_HOLD_SECONDS - holdTime) / ANSWER_HOLD_SECONDS) * 100} className="w-1/2 mx-auto h-2 mt-1" />
+                 </div>
+              )}
             </Card>
         </div>
       </div>
