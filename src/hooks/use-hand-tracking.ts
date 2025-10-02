@@ -120,7 +120,12 @@ export function useHandTracking(): HandTrackingHook {
 
     const canvasCtx = canvas.getContext('2d');
     if (canvasCtx && drawingUtilsRef.current) {
+      canvasCtx.save();
       canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+      // Flip the canvas horizontally to match the mirrored video
+      canvasCtx.scale(-1, 1);
+      canvasCtx.translate(-canvas.width, 0);
+
       if (results.landmarks) {
         for (const landmark of results.landmarks) {
           drawingUtilsRef.current.drawConnectors(landmark, HandLandmarker.HAND_CONNECTIONS, {
@@ -130,6 +135,7 @@ export function useHandTracking(): HandTrackingHook {
           drawingUtilsRef.current.drawLandmarks(landmark, { color: 'rgba(230, 230, 250, 0.9)', lineWidth: 1, radius: 2 });
         }
       }
+      canvasCtx.restore();
     }
     
     const fingerCount = results.landmarks ? countFingers(results.landmarks, results.handedness) : 0;
@@ -140,7 +146,8 @@ export function useHandTracking(): HandTrackingHook {
 
     if (canvasCtx && results.landmarks.length > 0) {
         const topOfHand = results.landmarks[0].reduce((min, lm) => (lm.y < min.y ? lm : min), results.landmarks[0][0]);
-        const x = topOfHand.x * canvas.width;
+        // We use the raw x coordinate and flip it manually for the text position
+        const x = (1 - topOfHand.x) * canvas.width;
         const y = topOfHand.y * canvas.height;
 
         canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.7)';
@@ -151,21 +158,13 @@ export function useHandTracking(): HandTrackingHook {
         const textMetrics = canvasCtx.measureText(text);
         const textWidth = textMetrics.width;
         const textHeight = 24;
-
-        // Flip the text horizontally to match the mirrored video
-        canvasCtx.save();
-        canvasCtx.scale(-1, 1);
-
-        const flippedX = -x;
         
         canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-        canvasCtx.roundRect(flippedX - textWidth / 2 - 10, y - textHeight - 20, textWidth + 20, textHeight + 15, 8);
+        canvasCtx.roundRect(x - textWidth / 2 - 10, y - textHeight - 20, textWidth + 20, textHeight + 15, 8);
         canvasCtx.fill();
         
         canvasCtx.fillStyle = 'white';
-        canvasCtx.fillText(text, flippedX, y - 10);
-        
-        canvasCtx.restore();
+        canvasCtx.fillText(text, x, y - 10);
     }
 
 
