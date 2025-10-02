@@ -209,7 +209,7 @@ export default function MathChallenge2Client() {
           <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full"></canvas>
 
           {gameState === 'PLAYING' && (
-            <div className="absolute top-0 left-0 w-full h-1/2 flex justify-center items-center gap-4 px-4">
+            <div className="absolute top-0 left-0 w-full h-full flex justify-center items-start gap-4 px-4 pt-4">
               {bubbles.map((bubble, index) => (
                 <div
                   key={index}
