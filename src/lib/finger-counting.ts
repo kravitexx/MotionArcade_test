@@ -23,7 +23,6 @@ const PINKY_PIP = 18;
 const PINKY_DIP = 19;
 const PINKY_TIP = 20;
 
-
 export function countFingers(landmarks: Landmark[][], handedness: Handedness[]): number {
   if (!landmarks || landmarks.length === 0) {
     return 0;
@@ -35,27 +34,42 @@ export function countFingers(landmarks: Landmark[][], handedness: Handedness[]):
     const handLandmarks = landmarks[i];
     const hand = handedness[i] && handedness[i][0] ? handedness[i][0].categoryName : 'Unknown';
     let raisedFingers = 0;
-    
-    // Check if fingers (index, middle, ring, pinky) are raised.
-    // A finger is considered raised if its tip is higher (smaller y-coordinate) than its PIP joint.
-    if (handLandmarks[INDEX_FINGER_TIP].y < handLandmarks[INDEX_FINGER_PIP].y) raisedFingers++;
-    if (handLandmarks[MIDDLE_FINGER_TIP].y < handLandmarks[MIDDLE_FINGER_PIP].y) raisedFingers++;
-    if (handLandmarks[RING_FINGER_TIP].y < handLandmarks[RING_FINGER_PIP].y) raisedFingers++;
-    if (handLandmarks[PINKY_TIP].y < handLandmarks[PINKY_PIP].y) raisedFingers++;
 
-    // Check for the thumb. This is trickier due to its rotation.
-    // A more reliable way is to check the horizontal distance.
-    // For a 'Right' hand shown with palm facing camera, a raised thumb's tip will have a smaller x-coordinate than the index finger's MCP joint.
-    // For a 'Left' hand, it's the opposite.
-    // This logic holds even when the hand is flipped, because handedness is detected by the model.
+    // A finger is considered raised if its tip is "above" its PIP joint (smaller y-coordinate).
+    const isIndexRaised = handLandmarks[INDEX_FINGER_TIP].y < handLandmarks[INDEX_FINGER_PIP].y;
+    const isMiddleRaised = handLandmarks[MIDDLE_FINGER_TIP].y < handLandmarks[MIDDLE_FINGER_PIP].y;
+    const isRingRaised = handLandmarks[RING_FINGER_TIP].y < handLandmarks[RING_FINGER_PIP].y;
+    const isPinkyRaised = handLandmarks[PINKY_TIP].y < handLandmarks[PINKY_PIP].y;
+
+    if (isIndexRaised) raisedFingers++;
+    if (isMiddleRaised) raisedFingers++;
+    if (isRingRaised) raisedFingers++;
+    if (isPinkyRaised) raisedFingers++;
+
+    // Thumb logic: A thumb is raised if its tip is further out from the palm center
+    // than its IP joint. The direction depends on the hand (left/right).
+    // This logic works for both palm and dorsal views.
     if (hand === 'Right') {
-      if (handLandmarks[THUMB_TIP].x < handLandmarks[INDEX_FINGER_MCP].x) {
+      if (handLandmarks[THUMB_TIP].x < handLandmarks[THUMB_IP].x) {
         raisedFingers++;
       }
     } else if (hand === 'Left') {
-      if (handLandmarks[THUMB_TIP].x > handLandmarks[INDEX_FINGER_MCP].x) {
+      if (handLandmarks[THUMB_TIP].x > handLandmarks[THUMB_IP].x) {
         raisedFingers++;
       }
+    } else { // Fallback for unknown handedness
+        const thumbBase = handLandmarks[THUMB_MCP];
+        const indexBase = handLandmarks[INDEX_FINGER_MCP];
+        // Guess handedness based on relative position of thumb and index base
+        if (thumbBase.x < indexBase.x) { // Likely a Left hand from camera's perspective
+             if (handLandmarks[THUMB_TIP].x > handLandmarks[THUMB_IP].x) {
+                raisedFingers++;
+             }
+        } else { // Likely a Right hand
+             if (handLandmarks[THUMB_TIP].x < handLandmarks[THUMB_IP].x) {
+                raisedFingers++;
+             }
+        }
     }
     
     totalFingers += raisedFingers;
