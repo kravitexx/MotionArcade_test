@@ -30,24 +30,25 @@ const prompt = ai.definePrompt({
   name: 'generateMathProblemPrompt',
   input: {schema: GenerateMathProblemInputSchema},
   output: {schema: GenerateMathProblemOutputSchema},
-  prompt: `You are an expert math problem generator for a children\'s game.  The problems should be tailored to the player\'s skill level, based on their current and past scores.
+  prompt: `You are an expert math problem generator for a children's game. The problems should be tailored to the player's skill level, based on their current and past scores.
 
   The generated math problem must:
+  * Be a simple, symbolic arithmetic problem (e.g., "4 + 2" or "8 - 3").
+  * DO NOT generate word problems or sentences.
   * Only use integers.
   * Have a solution between 0 and 10, inclusive.
   * Only use the following operations: addition, subtraction, multiplication, and division.
 
-  Here is the player\'s current score: {{{currentScore}}}
-  Here are the player\'s past scores: {{{pastScores}}}
+  Here is the player's current score: {{{currentScore}}}
+  Here are the player's past scores: {{{pastScores}}}
 
   Generate a math problem and the solution to that problem.
-  Make sure the problem uses kid-friendly language.
-  Ensure that you do not include the solution in the problem itself, and that the solution matches the value in the \"solution\" output field.
+  Ensure that you do not include the solution in the problem itself, and that the solution matches the value in the "solution" output field.
 
   For example:
   {
-    \"problem\": \"What is 5 + 3?\",
-    \"solution\": 8
+    "problem": "5 + 3?",
+    "solution": 8
   }`,
 });
 
