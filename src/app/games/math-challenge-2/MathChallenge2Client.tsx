@@ -132,31 +132,30 @@ export default function MathChallenge2Client() {
     if (gameState !== 'PLAYING' || !landmarks.length || !canvasRef.current) return;
     
     const canvas = canvasRef.current;
-    // This is the container for the video/canvas, which is the reference for the bubbles.
-    const container = canvas.parentElement; 
-    if (!container) return;
-
+    
     // Index finger tip is landmark 8
     const indexTip = landmarks[0][8]; 
     if (!indexTip) return;
 
-    // The landmarks are normalized (0-1). We need to convert them to coordinates
-    // relative to the container, which is the same as the canvas/video dimensions.
+    // The landmarks are normalized (0-1). We need to convert them to absolute
+    // coordinates on the page.
+    const canvasRect = canvas.getBoundingClientRect();
     // The video is mirrored, so we flip the x-coordinate.
-    const tipX = (1 - indexTip.x) * canvas.width;
-    const tipY = indexTip.y * canvas.height;
+    const tipX = canvasRect.left + (1 - indexTip.x) * canvasRect.width;
+    const tipY = canvasRect.top + indexTip.y * canvasRect.height;
 
 
     bubbleRefs.current.forEach((bubbleDiv, index) => {
         if (!bubbleDiv || bubbles[index].popped) return;
         
-        // Get bubble position relative to its container (which is our reference `container`)
-        const bubbleX = bubbleDiv.offsetLeft + bubbleDiv.offsetWidth / 2;
-        const bubbleY = bubbleDiv.offsetTop + bubbleDiv.offsetHeight / 2;
-        const bubbleRadius = bubbleDiv.offsetWidth / 2;
+        // Get bubble position relative to the viewport
+        const bubbleRect = bubbleDiv.getBoundingClientRect();
+        const bubbleX = bubbleRect.left + bubbleRect.width / 2;
+        const bubbleY = bubbleRect.top + bubbleRect.height / 2;
+        const bubbleRadius = bubbleRect.width / 2;
         
         const distance = Math.sqrt(Math.pow(tipX - bubbleX, 2) + Math.pow(tipY - bubbleY, 2));
-
+        
         if (distance < bubbleRadius) {
             // Pop!
             popAudioRef.current?.play().catch(e => console.error("Audio play failed:", e));
@@ -209,7 +208,7 @@ export default function MathChallenge2Client() {
           <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full"></canvas>
 
           {gameState === 'PLAYING' && (
-            <div className="absolute top-0 left-0 w-full h-full flex justify-around items-start pt-4 px-4">
+             <div className="absolute top-0 left-0 w-full h-full flex justify-around items-center pt-4 px-4">
               {bubbles.map((bubble, index) => (
                 <div
                   key={index}
