@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useHandTracking } from '@/hooks/use-hand-tracking';
-import { generateQuizQuestion, type GenerateQuizQuestionInput } from '@/ai/flows/quiz-quest-flow';
+import { generateQuizQuestion, type GenerateQuizQuestionOutput } from '@/ai/flows/quiz-quest-flow';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { CheckCircle2, XCircle, Loader, Hand, Timer, Smartphone, Check, BookOpen } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader, Hand, Timer, Smartphone } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -99,8 +99,8 @@ export default function QuizQuestClient() {
   }, [startVideo, fetchNewProblem]);
   
   const handleAnswer = useCallback((answer: 'correct' | 'incorrect', submitted: number) => {
-      setFeedback(answer);
       setGameState('FEEDBACK');
+      setFeedback(answer);
       setLastSubmittedAnswer(submitted);
       if (answer === 'correct') {
           setScore(s => s + 1);
@@ -147,13 +147,13 @@ export default function QuizQuestClient() {
   }, [detectedFingers, gameState, feedback, potentialAnswer]);
 
   useEffect(() => {
-    if (answerHoldTime >= ANSWER_HOLD_SECONDS && potentialAnswer && currentProblem) {
+    if (answerHoldTime >= ANSWER_HOLD_SECONDS && potentialAnswer && currentProblem && gameState === 'PLAYING') {
       const isCorrect = (potentialAnswer - 1) === currentProblem.correctAnswerIndex;
       handleAnswer(isCorrect ? 'correct' : 'incorrect', potentialAnswer);
       // Reset hold time to prevent re-triggering
       setAnswerHoldTime(0);
     }
-  }, [answerHoldTime, potentialAnswer, currentProblem, handleAnswer]);
+  }, [answerHoldTime, potentialAnswer, currentProblem, handleAnswer, gameState]);
 
   const handleSubjectChange = (subject: string, checked: boolean) => {
     setSelectedSubjects(prev => 
@@ -204,27 +204,6 @@ export default function QuizQuestClient() {
                     <Button onClick={startGame} size="lg" className="font-headline text-lg mt-8 w-full" disabled={selectedSubjects.length === 0 && !otherSubject.trim()}>Start Quiz</Button>
                 </CardContent>
             </Card>
-        </div>
-      );
-    }
-    
-    if (gameState === 'IDLE') {
-      return (
-        <div className="flex flex-col items-center justify-center text-center">
-          <h2 className="font-headline text-3xl mb-4">Ready for a Quiz?</h2>
-          <p className="text-muted-foreground mb-8 max-w-md">
-            Answer trivia by holding up 1, 2, 3, or 4 fingers to select an option. Hold your choice for a few seconds to lock it in.
-          </p>
-          {isMobile && (
-             <Alert className="mb-4">
-              <Smartphone className="h-4 w-4" />
-              <AlertTitle>Mobile Experience</AlertTitle>
-              <AlertDescription>
-                This game is best experienced on a desktop. Performance may be slower on mobile devices.
-              </AlertDescription>
-            </Alert>
-          )}
-          <Button onClick={() => setGameState('SUBJECT_SELECTION')} size="lg" className="font-headline text-lg">Choose Subjects</Button>
         </div>
       );
     }
@@ -307,5 +286,3 @@ export default function QuizQuestClient() {
     </div>
   );
 }
-
-    
