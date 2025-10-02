@@ -16,7 +16,7 @@ const PROBLEM_TIMER_SECONDS = 15;
 
 export default function MathChallengeClient() {
   const { videoRef, canvasRef, detectedFingers, startVideo, stopVideo, isLoading: isHandTrackingLoading, error: handTrackingError } = useHandTracking();
-  const { toast } = useToast();
+  const { toast, dismiss } = useToast();
   const toastIdRef = useRef<string | null>(null);
 
   const [gameState, setGameState] = useState<GameState>('IDLE');
@@ -41,11 +41,11 @@ export default function MathChallengeClient() {
       stopVideo();
     } else {
       if (toastIdRef.current) {
-        // dismiss(); // `dismiss` is not available on `useToast`
+        dismiss(toastIdRef.current);
         toastIdRef.current = null;
       }
     }
-  }, [handTrackingError, toast, stopVideo]);
+  }, [handTrackingError, toast, stopVideo, dismiss]);
 
   const fetchNewProblem = useCallback(async () => {
     try {
@@ -129,7 +129,7 @@ export default function MathChallengeClient() {
     }
 
     return (
-      <div className="w-full max-w-4xl mx-auto flex flex-col items-center gap-4">
+      <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
         <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-muted shadow-lg">
           <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]"></video>
           <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full scale-x-[-1]"></canvas>
@@ -145,29 +145,31 @@ export default function MathChallengeClient() {
           )}
         </div>
 
-        <Card className="w-full p-4">
-          <div className="flex justify-between items-center text-lg gap-4">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-primary">SCORE:</span>
-              <span className="font-headline text-2xl">{score}</span>
-            </div>
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Hand className="h-5 w-5" />
-              <span className="font-headline text-2xl">{detectedFingers}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Timer className="h-5 w-5" />
-              <span className="font-headline text-2xl w-8 text-center">{timeLeft}</span>
-            </div>
-          </div>
-          <Progress value={(timeLeft / PROBLEM_TIMER_SECONDS) * 100} className="w-full h-2 mt-2" />
-        </Card>
+        <div className="flex flex-col gap-4 w-full">
+            <Card className="w-full p-6 text-center">
+              <p className="font-headline text-4xl md:text-5xl tracking-wider">
+                {currentProblem?.problem || 'Loading problem...'}
+              </p>
+            </Card>
 
-        <Card className="w-full p-6 text-center">
-          <p className="font-headline text-4xl md:text-5xl tracking-wider">
-            {currentProblem?.problem || 'Loading problem...'}
-          </p>
-        </Card>
+            <Card className="w-full p-4">
+              <div className="flex justify-between items-center text-lg gap-4">
+                <div className="flex flex-col items-center">
+                  <span className="font-bold text-primary text-sm">SCORE</span>
+                  <span className="font-headline text-4xl">{score}</span>
+                </div>
+                <div className="flex flex-col items-center">
+                  <span className="text-muted-foreground text-sm flex items-center gap-1"><Hand className="h-4 w-4" /> GUESS</span>
+                  <span className="font-headline text-4xl">{detectedFingers}</span>
+                </div>
+                <div className="flex flex-col items-center">
+                   <span className="text-muted-foreground text-sm flex items-center gap-1"><Timer className="h-4 w-4" /> TIME</span>
+                  <span className="font-headline text-4xl w-20 text-center">{timeLeft}</span>
+                </div>
+              </div>
+              <Progress value={(timeLeft / PROBLEM_TIMER_SECONDS) * 100} className="w-full h-2 mt-4" />
+            </Card>
+        </div>
       </div>
     );
   };
