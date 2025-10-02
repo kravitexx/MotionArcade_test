@@ -36,30 +36,26 @@ export function countFingers(landmarks: Landmark[][], handedness: Handedness[]):
     const hand = handedness[i] && handedness[i][0] ? handedness[i][0].categoryName : 'Unknown';
     let raisedFingers = 0;
     
-    const fingerCurls = {
-        thumb: handLandmarks[THUMB_TIP].y < handLandmarks[THUMB_IP].y,
-        index: handLandmarks[INDEX_FINGER_TIP].y < handLandmarks[INDEX_FINGER_PIP].y,
-        middle: handLandmarks[MIDDLE_FINGER_TIP].y < handLandmarks[MIDDLE_FINGER_PIP].y,
-        ring: handLandmarks[RING_FINGER_TIP].y < handLandmarks[RING_FINGER_PIP].y,
-        pinky: handLandmarks[PINKY_TIP].y < handLandmarks[PINKY_PIP].y,
-    };
-    
-    // A more robust thumb check. The thumb is "up" if its tip is further from the wrist
-    // in the x-direction than its MCP joint, considering handedness.
+    // Check if fingers (index, middle, ring, pinky) are raised.
+    // A finger is considered raised if its tip is higher (smaller y-coordinate) than its PIP joint.
+    if (handLandmarks[INDEX_FINGER_TIP].y < handLandmarks[INDEX_FINGER_PIP].y) raisedFingers++;
+    if (handLandmarks[MIDDLE_FINGER_TIP].y < handLandmarks[MIDDLE_FINGER_PIP].y) raisedFingers++;
+    if (handLandmarks[RING_FINGER_TIP].y < handLandmarks[RING_FINGER_PIP].y) raisedFingers++;
+    if (handLandmarks[PINKY_TIP].y < handLandmarks[PINKY_PIP].y) raisedFingers++;
+
+    // Check for the thumb. This is trickier due to its rotation.
+    // A more reliable way is to check the horizontal distance.
+    // For a 'Right' hand, a raised thumb's tip will have a smaller x-coordinate than the joints closer to the palm.
+    // For a 'Left' hand, it's the opposite.
     if (hand === 'Right') {
-      if (handLandmarks[THUMB_TIP].x < handLandmarks[THUMB_MCP].x) {
+      if (handLandmarks[THUMB_TIP].x < handLandmarks[THUMB_IP].x && handLandmarks[THUMB_IP].x < handLandmarks[THUMB_MCP].x) {
         raisedFingers++;
       }
     } else if (hand === 'Left') {
-      if (handLandmarks[THUMB_TIP].x > handLandmarks[THUMB_MCP].x) {
+      if (handLandmarks[THUMB_TIP].x > handLandmarks[THUMB_IP].x && handLandmarks[THUMB_IP].x > handLandmarks[THUMB_MCP].x) {
         raisedFingers++;
       }
     }
-
-    if (fingerCurls.index) raisedFingers++;
-    if (fingerCurls.middle) raisedFingers++;
-    if (fingerCurls.ring) raisedFingers++;
-    if (fingerCurls.pinky) raisedFingers++;
     
     totalFingers += raisedFingers;
   }
