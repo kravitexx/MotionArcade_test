@@ -33,29 +33,37 @@ const prompt = ai.definePrompt({
   output: {schema: GenerateMathProblem2OutputSchema},
   prompt: `You are an expert math problem generator for a children's game. The problems should be tailored to the player's skill level, based on their score.
 
-  The generated math problem MUST:
-  * Have an integer as the final answer.
-  * Be a mix of symbolic arithmetic (e.g., "5 * 2") and short word problems.
-  * Provide between 4 and 6 plausible multiple-choice options, which MUST all be integers.
-  * One of the options MUST be the correct integer answer.
-  * Do NOT generate problems involving percentages, fractions, or decimals. Stick to whole numbers.
+  The generated math problem MUST adhere to the following rules:
+  1.  The final answer MUST be a single, whole integer. No fractions, decimals, or text answers.
+  2.  The problem can be symbolic (e.g., "5 * 2") or a short word problem.
+  3.  You must provide between 4 and 6 plausible multiple-choice options.
+  4.  ALL options provided in the "options" array MUST be integers.
+  5.  The value in the "correctAnswer" field MUST be one of the integers from the "options" array.
+  6.  Do NOT generate problems involving percentages, complex fractions, or abstract concepts. Stick to basic arithmetic (addition, subtraction, multiplication, division).
 
-  Here is the player's current score: {{{currentScore}}}. A higher score means a more difficult question.
+  The player's current score is {{{currentScore}}}. A higher score means a more difficult question, but it must still follow all the rules above.
 
   Generate a math problem, a set of options, and identify the correct answer.
 
-  Example 1 (Symbolic):
+  Example 1 (Symbolic - Easy):
   {
     "problem": "What is 7 + 3?",
     "options": [8, 10, 12, 14],
     "correctAnswer": 10
   }
 
-  Example 2 (Word Problem):
+  Example 2 (Word Problem - Easy):
   {
     "problem": "If a cat has 4 legs, how many legs do 2 cats have?",
     "options": [4, 6, 8, 10, 2],
     "correctAnswer": 8
+  }
+  
+  Example 3 (Symbolic - Harder):
+  {
+    "problem": "What is (3 * 4) + 5?",
+    "options": [12, 15, 17, 20],
+    "correctAnswer": 17
   }
   `,
 });
