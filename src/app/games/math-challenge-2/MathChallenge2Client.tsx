@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useHandTracking } from '@/hooks/use-hand-tracking';
 import { generateMathProblem2, type GenerateMathProblem2Output } from '@/ai/flows/math-challenge-2-flow';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { CheckCircle2, XCircle, Loader, Timer, Smartphone, Target } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
@@ -203,18 +203,19 @@ export default function MathChallenge2Client() {
     const bubbleSize = isMobile ? 'w-20 h-20 text-xl' : 'w-28 h-28 text-3xl';
 
     return (
-      <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-        <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-muted shadow-lg">
+      <div className="w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+        <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-muted shadow-lg lg:col-span-2">
           <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]"></video>
           <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full"></canvas>
 
           {gameState === 'PLAYING' && (
-            <div className="absolute top-0 left-0 w-full h-full flex justify-center items-start gap-4 px-4 pt-4">
+            <div className="absolute top-0 left-0 w-full h-full flex justify-around items-start pt-4 px-4">
               {bubbles.map((bubble, index) => (
                 <div
                   key={index}
                   ref={el => bubbleRefs.current[index] = el}
-                  className={`flex items-center justify-center rounded-full border-4 border-primary bg-primary/30 text-white font-bold transition-all duration-300 ${bubble.popped ? 'scale-150 opacity-0' : 'scale-100 opacity-100'} ${bubbleSize}`}
+                  className={`flex items-center justify-center rounded-full border-4 border-primary bg-primary/30 text-white font-bold transition-all duration-300 animate-float ${bubble.popped ? 'animate-pop' : ''} ${bubbleSize}`}
+                  style={{ animationDelay: `${index * 150}ms` }}
                 >
                   {bubble.value}
                 </div>
@@ -244,7 +245,7 @@ export default function MathChallenge2Client() {
 
         </div>
 
-        <div className="flex flex-col gap-4 w-full">
+        <div className="flex flex-col gap-4 w-full lg:col-span-1">
             <Card className="w-full p-6 text-center flex items-center justify-center flex-grow min-h-[140px] lg:min-h-[200px]">
                <div className="flex items-center justify-center h-full">
                 {gameState === 'LOADING_PROBLEM' ? (
