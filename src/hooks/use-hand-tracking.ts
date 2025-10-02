@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { HandLandmarker, FilesetResolver, DrawingUtils } from '@mediapipe/tasks-vision';
 import type { HandLandmarkerResult, Landmark, Handedness } from '@mediapipe/tasks-vision';
+import { useIsMobile } from './use-mobile';
 
 type HandTrackingHook = {
   videoRef: React.RefObject<HTMLVideoElement>;
@@ -24,6 +25,7 @@ export function useHandTracking(): HandTrackingHook {
   const requestRef = useRef<number>();
   const handLandmarkerRef = useRef<HandLandmarker | null>(null);
   const drawingUtilsRef = useRef<DrawingUtils | null>(null);
+  const isMobile = useIsMobile();
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +42,7 @@ export function useHandTracking(): HandTrackingHook {
         const handLandmarker = await HandLandmarker.createFromOptions(vision, {
           baseOptions: {
             modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
-            delegate: 'GPU',
+            delegate: isMobile ? 'CPU' : 'GPU',
           },
           runningMode: 'VIDEO',
           numHands: 2,
@@ -66,7 +68,7 @@ export function useHandTracking(): HandTrackingHook {
       stopVideo();
       handLandmarkerRef.current?.close();
     };
-  }, []);
+  }, [isMobile]);
 
   const startVideo = async () => {
     if (isLoading) return;
@@ -75,7 +77,11 @@ export function useHandTracking(): HandTrackingHook {
     setError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 480 } },
+        video: { 
+          width: { ideal: isMobile ? 320 : 640 }, 
+          height: { ideal: isMobile ? 240 : 480 },
+          facingMode: "user" 
+        },
         audio: false,
       });
       if (videoRef.current) {
