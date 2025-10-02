@@ -14,10 +14,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-type GameState = 'SUBJECT_SELECTION' | 'LOADING' | 'PLAYING' | 'FEEDBACK' | 'LOADING_PROBLEM';
+type GameState = 'SUBJECT_SELECTION' | 'LOADING' | 'PLAYING' | 'HOLDING' | 'FEEDBACK' | 'LOADING_PROBLEM';
 
 const FEEDBACK_DURATION = 2000;
-const PROBLEM_TIMER_SECONDS = 10;
+const THINKING_TIMER_SECONDS = 10;
 const ANSWER_HOLD_SECONDS = 3;
 
 const subjects = [
@@ -37,8 +37,8 @@ export default function QuizQuestClient() {
   const [currentProblem, setCurrentProblem] = useState<GenerateQuizQuestionOutput | null>(null);
   const [score, setScore] = useState(0);
   const [feedback, setFeedback] = useState<'correct' | 'incorrect' | null>(null);
-  const [timeLeft, setTimeLeft] = useState(PROBLEM_TIMER_SECONDS);
-  const [answerHoldTime, setAnswerHoldTime] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(THINKING_TIMER_SECONDS);
+  const [holdTime, setHoldTime] = useState(ANSWER_HOLD_SECONDS);
   const [potentialAnswer, setPotentialAnswer] = useState<number | null>(null);
   const [lastSubmittedAnswer, setLastSubmittedAnswer] = useState<number | null>(null);
   
@@ -79,7 +79,7 @@ export default function QuizQuestClient() {
       const subjects = getFinalSubjects();
       const problem = await generateQuizQuestion({ currentScore: score, subjects });
       setCurrentProblem(problem);
-      setTimeLeft(PROBLEM_TIMER_SECONDS);
+      setTimeLeft(THINKING_TIMER_SECONDS);
       setGameState('PLAYING');
     } catch (error) {
       toast({
@@ -110,50 +110,55 @@ export default function QuizQuestClient() {
   const resetForNextQuestion = useCallback(() => {
     setFeedback(null);
     setPotentialAnswer(null);
-    setAnswerHoldTime(0);
     setLastSubmittedAnswer(null);
     fetchNewProblem();
   }, [fetchNewProblem]);
 
   useEffect(() => {
-    let gameLoopTimer: NodeJS.Timeout | undefined;
+    let timer: NodeJS.Timeout | undefined;
 
-    if (gameState === 'FEEDBACK') {
-      gameLoopTimer = setTimeout(resetForNextQuestion, FEEDBACK_DURATION);
-    } else if (gameState === 'PLAYING' && timeLeft > 0) {
-      gameLoopTimer = setTimeout(() => setTimeLeft(t => t - 1), 1000);
+    if (gameState === 'PLAYING' && timeLeft > 0) {
+      timer = setTimeout(() => setTimeLeft(t => t - 1), 1000);
     } else if (gameState === 'PLAYING' && timeLeft === 0) {
+      // Time's up for thinking
       handleAnswer('incorrect', 0);
+    } else if (gameState === 'HOLDING' && holdTime > 0) {
+        timer = setTimeout(() => setHoldTime(t => t - 1), 1000);
+    } else if (gameState === 'HOLDING' && holdTime === 0) {
+        // Successfully held the answer
+        if (potentialAnswer && currentProblem) {
+            const isCorrect = (potentialAnswer - 1) === currentProblem.correctAnswerIndex;
+            handleAnswer(isCorrect ? 'correct' : 'incorrect', potentialAnswer);
+        }
+    } else if (gameState === 'FEEDBACK') {
+      timer = setTimeout(resetForNextQuestion, FEEDBACK_DURATION);
     }
 
-    return () => clearTimeout(gameLoopTimer);
-  }, [gameState, timeLeft, resetForNextQuestion, handleAnswer]);
+    return () => clearTimeout(timer);
+  }, [gameState, timeLeft, holdTime, potentialAnswer, currentProblem, handleAnswer, resetForNextQuestion]);
 
 
   useEffect(() => {
-    if (gameState !== 'PLAYING' || feedback) return;
+    if (gameState !== 'PLAYING') return;
 
     if (detectedFingers > 0 && detectedFingers <= 4) {
-      if (potentialAnswer === detectedFingers) {
-        setAnswerHoldTime(prev => prev + 1);
-      } else {
+        // Start holding
         setPotentialAnswer(detectedFingers);
-        setAnswerHoldTime(1);
-      }
-    } else {
-      setPotentialAnswer(null);
-      setAnswerHoldTime(0);
+        setHoldTime(ANSWER_HOLD_SECONDS);
+        setGameState('HOLDING');
     }
-  }, [detectedFingers, gameState, feedback, potentialAnswer]);
+  }, [detectedFingers, gameState]);
 
   useEffect(() => {
-    if (answerHoldTime >= ANSWER_HOLD_SECONDS && potentialAnswer && currentProblem && gameState === 'PLAYING') {
-      const isCorrect = (potentialAnswer - 1) === currentProblem.correctAnswerIndex;
-      handleAnswer(isCorrect ? 'correct' : 'incorrect', potentialAnswer);
-      // Reset hold time to prevent re-triggering
-      setAnswerHoldTime(0);
+    if(gameState === 'HOLDING') {
+      if (detectedFingers !== potentialAnswer) {
+        // User changed their mind, go back to playing
+        setPotentialAnswer(null);
+        setGameState('PLAYING');
+      }
     }
-  }, [answerHoldTime, potentialAnswer, currentProblem, handleAnswer, gameState]);
+  }, [detectedFingers, potentialAnswer, gameState]);
+
 
   const handleSubjectChange = (subject: string, checked: boolean) => {
     setSelectedSubjects(prev => 
@@ -209,6 +214,8 @@ export default function QuizQuestClient() {
     }
 
     const showLoading = gameState === 'LOADING' || isHandTrackingLoading;
+    const isThinking = gameState === 'PLAYING';
+    const isHolding = gameState === 'HOLDING';
 
     return (
       <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
@@ -260,18 +267,24 @@ export default function QuizQuestClient() {
                 </div>
                 <div className="flex flex-col items-center">
                    <span className="text-muted-foreground text-sm flex items-center gap-1"><Hand className="h-4 w-4" /> CHOICE</span>
-                   <span className="font-headline text-4xl">{potentialAnswer || '?'}</span>
+                   <span className="font-headline text-4xl">{potentialAnswer || detectedFingers || '?'}</span>
                 </div>
                 <div className="flex flex-col items-center">
                    <span className="text-muted-foreground text-sm flex items-center gap-1"><Timer className="h-4 w-4" /> TIME</span>
-                  <span className="font-headline text-4xl w-20 text-center">{timeLeft}</span>
+                  <span className="font-headline text-4xl w-20 text-center">{isThinking ? timeLeft : holdTime}</span>
                 </div>
               </div>
-              <Progress value={(timeLeft / PROBLEM_TIMER_SECONDS) * 100} className="w-full h-2 mt-4" />
-              {potentialAnswer && (
+
+              {isThinking && (
                  <div className="mt-2 text-center">
-                   <p className="text-sm text-muted-foreground">Hold your choice!</p>
-                   <Progress value={(answerHoldTime / ANSWER_HOLD_SECONDS) * 100} className="w-1/2 mx-auto h-1 mt-1" />
+                   <p className="text-sm text-muted-foreground">Choose your answer!</p>
+                   <Progress value={(timeLeft / THINKING_TIMER_SECONDS) * 100} className="w-full h-2 mt-1" />
+                 </div>
+              )}
+               {isHolding && (
+                 <div className="mt-2 text-center">
+                   <p className="text-sm text-muted-foreground">Hold your choice to confirm!</p>
+                   <Progress value={((ANSWER_HOLD_SECONDS - holdTime) / ANSWER_HOLD_SECONDS) * 100} className="w-1/2 mx-auto h-2 mt-1" />
                  </div>
               )}
             </Card>
