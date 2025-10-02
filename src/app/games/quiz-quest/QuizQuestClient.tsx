@@ -2,20 +2,30 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useHandTracking } from '@/hooks/use-hand-tracking';
-import { generateQuizQuestion, type GenerateQuizQuestionOutput } from '@/ai/flows/quiz-quest-flow';
+import { generateQuizQuestion, type GenerateQuizQuestionInput } from '@/ai/flows/quiz-quest-flow';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { CheckCircle2, XCircle, Loader, Hand, Timer, Smartphone, HelpCircle } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader, Hand, Timer, Smartphone, Check, BookOpen } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
-type GameState = 'IDLE' | 'LOADING' | 'PLAYING' | 'FEEDBACK' | 'LOADING_PROBLEM';
+type GameState = 'SUBJECT_SELECTION' | 'LOADING' | 'PLAYING' | 'FEEDBACK' | 'LOADING_PROBLEM';
 
 const FEEDBACK_DURATION = 2000;
-const PROBLEM_TIMER_SECONDS = 15;
+const PROBLEM_TIMER_SECONDS = 10;
 const ANSWER_HOLD_SECONDS = 3;
+
+const subjects = [
+  { id: 'general-knowledge', label: 'General Knowledge' },
+  { id: 'science', label: 'Science' },
+  { id: 'history', label: 'History' },
+  { id: 'computer', label: 'Computers' },
+];
 
 export default function QuizQuestClient() {
   const { videoRef, canvasRef, detectedFingers, startVideo, stopVideo, isLoading: isHandTrackingLoading, error: handTrackingError } = useHandTracking();
@@ -23,7 +33,7 @@ export default function QuizQuestClient() {
   const toastIdRef = useRef<string | null>(null);
   const isMobile = useIsMobile();
 
-  const [gameState, setGameState] = useState<GameState>('IDLE');
+  const [gameState, setGameState] = useState<GameState>('SUBJECT_SELECTION');
   const [currentProblem, setCurrentProblem] = useState<GenerateQuizQuestionOutput | null>(null);
   const [score, setScore] = useState(0);
   const [feedback, setFeedback] = useState<'correct' | 'incorrect' | null>(null);
@@ -31,6 +41,9 @@ export default function QuizQuestClient() {
   const [answerHoldTime, setAnswerHoldTime] = useState(0);
   const [potentialAnswer, setPotentialAnswer] = useState<number | null>(null);
   const [lastSubmittedAnswer, setLastSubmittedAnswer] = useState<number | null>(null);
+  
+  const [selectedSubjects, setSelectedSubjects] = useState<string[]>(['General Knowledge']);
+  const [otherSubject, setOtherSubject] = useState('');
 
   useEffect(() => {
     if (handTrackingError) {
@@ -42,7 +55,7 @@ export default function QuizQuestClient() {
         });
         toastIdRef.current = id;
       }
-      setGameState('IDLE');
+      setGameState('SUBJECT_SELECTION');
       stopVideo();
     } else {
       if (toastIdRef.current) {
@@ -52,10 +65,19 @@ export default function QuizQuestClient() {
     }
   }, [handTrackingError, toast, stopVideo, dismiss]);
 
+  const getFinalSubjects = useCallback(() => {
+    const finalSubjects = [...selectedSubjects];
+    if(otherSubject.trim()){
+        finalSubjects.push(otherSubject.trim());
+    }
+    return finalSubjects.length > 0 ? finalSubjects : ['General Knowledge'];
+  }, [selectedSubjects, otherSubject]);
+
   const fetchNewProblem = useCallback(async () => {
     setGameState('LOADING_PROBLEM');
     try {
-      const problem = await generateQuizQuestion({ currentScore: score });
+      const subjects = getFinalSubjects();
+      const problem = await generateQuizQuestion({ currentScore: score, subjects });
       setCurrentProblem(problem);
       setTimeLeft(PROBLEM_TIMER_SECONDS);
       setGameState('PLAYING');
@@ -65,9 +87,9 @@ export default function QuizQuestClient() {
         title: 'AI Error',
         description: 'Could not generate a new quiz question.',
       });
-      setGameState('IDLE');
+      setGameState('SUBJECT_SELECTION');
     }
-  }, [score, toast]);
+  }, [score, toast, getFinalSubjects]);
 
   const startGame = useCallback(async () => {
     setScore(0);
@@ -133,8 +155,59 @@ export default function QuizQuestClient() {
     }
   }, [answerHoldTime, potentialAnswer, currentProblem, handleAnswer]);
 
+  const handleSubjectChange = (subject: string, checked: boolean) => {
+    setSelectedSubjects(prev => 
+      checked ? [...prev, subject] : prev.filter(s => s !== subject)
+    );
+  };
+
 
   const renderGameState = () => {
+    if (gameState === 'SUBJECT_SELECTION') {
+      return (
+        <div className="flex flex-col items-center justify-center text-center">
+            <Card className="max-w-lg w-full p-6">
+                <CardContent className="pt-6">
+                    <h2 className="font-headline text-3xl mb-4">Choose Your Topics</h2>
+                    <p className="text-muted-foreground mb-6">
+                        Select one or more subjects for your quiz. Questions will be based on your choices.
+                    </p>
+                    <div className="space-y-4 text-left">
+                        <div className="grid grid-cols-2 gap-4">
+                            {subjects.map(subject => (
+                                <div key={subject.id} className="flex items-center space-x-2">
+                                    <Checkbox 
+                                        id={subject.id} 
+                                        checked={selectedSubjects.includes(subject.label)}
+                                        onCheckedChange={(checked) => handleSubjectChange(subject.label, !!checked)}
+                                    />
+                                    <label
+                                        htmlFor={subject.id}
+                                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                    >
+                                        {subject.label}
+                                    </label>
+                                </div>
+                            ))}
+                        </div>
+                         <div className="space-y-2">
+                            <Label htmlFor="other-subject">Other</Label>
+                            <Input 
+                                id="other-subject" 
+                                placeholder="e.g., 'Movies', 'Sports'"
+                                value={otherSubject}
+                                onChange={(e) => setOtherSubject(e.target.value)}
+                            />
+                            <p className="text-xs text-muted-foreground">Specify a custom topic.</p>
+                        </div>
+                    </div>
+                    <Button onClick={startGame} size="lg" className="font-headline text-lg mt-8 w-full" disabled={selectedSubjects.length === 0 && !otherSubject.trim()}>Start Quiz</Button>
+                </CardContent>
+            </Card>
+        </div>
+      );
+    }
+    
     if (gameState === 'IDLE') {
       return (
         <div className="flex flex-col items-center justify-center text-center">
@@ -151,7 +224,7 @@ export default function QuizQuestClient() {
               </AlertDescription>
             </Alert>
           )}
-          <Button onClick={startGame} size="lg" className="font-headline text-lg">Start Game</Button>
+          <Button onClick={() => setGameState('SUBJECT_SELECTION')} size="lg" className="font-headline text-lg">Choose Subjects</Button>
         </div>
       );
     }
@@ -234,3 +307,5 @@ export default function QuizQuestClient() {
     </div>
   );
 }
+
+    

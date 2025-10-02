@@ -1,6 +1,6 @@
 'use server';
 /**
- * @fileOverview An AI agent that generates quiz questions.
+ * @fileOverview An AI agent that generates quiz questions based on selected subjects.
  *
  * - generateQuizQuestion - A function that generates a quiz question.
  * - GenerateQuizQuestionInput - The input type for the generateQuizQuestion function.
@@ -12,6 +12,7 @@ import {z} from 'genkit';
 
 const GenerateQuizQuestionInputSchema = z.object({
   currentScore: z.number().describe("The player's current score."),
+  subjects: z.array(z.string()).describe("An array of subjects for the quiz questions. Can be broad (e.g., 'History') or specific (e.g., 'World War 2')."),
 });
 export type GenerateQuizQuestionInput = z.infer<typeof GenerateQuizQuestionInputSchema>;
 
@@ -31,8 +32,9 @@ const prompt = ai.definePrompt({
   name: 'generateQuizQuestionPrompt',
   input: {schema: GenerateQuizQuestionInputSchema},
   output: {schema: GenerateQuizQuestionOutputSchema},
-  prompt: `You are a quiz master for a fun, educational game. Generate a random trivia question.
+  prompt: `You are a quiz master for a fun, educational game. Generate a trivia question based on the following subjects: {{{subjects}}}.
 
+  The question must be answerable within 10 seconds.
   The question should be interesting and suitable for a general audience.
   Provide 4 distinct options for the answer.
   One of the options must be the correct answer.
@@ -60,3 +62,5 @@ const generateQuizQuestionFlow = ai.defineFlow(
     return output!;
   }
 );
+
+    
