@@ -45,14 +45,15 @@ export function countFingers(landmarks: Landmark[][], handedness: Handedness[]):
 
     // Check for the thumb. This is trickier due to its rotation.
     // A more reliable way is to check the horizontal distance.
-    // For a 'Right' hand, a raised thumb's tip will have a smaller x-coordinate than the joints closer to the palm.
+    // For a 'Right' hand shown with palm facing camera, a raised thumb's tip will have a smaller x-coordinate than the index finger's MCP joint.
     // For a 'Left' hand, it's the opposite.
+    // This logic holds even when the hand is flipped, because handedness is detected by the model.
     if (hand === 'Right') {
-      if (handLandmarks[THUMB_TIP].x < handLandmarks[THUMB_IP].x && handLandmarks[THUMB_IP].x < handLandmarks[THUMB_MCP].x) {
+      if (handLandmarks[THUMB_TIP].x < handLandmarks[INDEX_FINGER_MCP].x) {
         raisedFingers++;
       }
     } else if (hand === 'Left') {
-      if (handLandmarks[THUMB_TIP].x > handLandmarks[THUMB_IP].x && handLandmarks[THUMB_IP].x > handLandmarks[THUMB_MCP].x) {
+      if (handLandmarks[THUMB_TIP].x > handLandmarks[INDEX_FINGER_MCP].x) {
         raisedFingers++;
       }
     }
