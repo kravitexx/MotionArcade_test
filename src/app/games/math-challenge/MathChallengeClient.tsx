@@ -164,9 +164,9 @@ export default function MathChallengeClient() {
         </div>
 
         <div className="flex flex-col gap-4 w-full">
-            <Card className="w-full p-6 text-center">
-               <p className="font-headline text-4xl md:text-5xl tracking-wider h-[60px] flex items-center justify-center">
-                {(gameState === 'LOADING_PROBLEM' && !currentProblem) || (gameState === 'LOADING' && !currentProblem) ? (
+            <Card className="w-full p-6 text-center flex items-center justify-center min-h-[140px]">
+               <p className="font-headline text-3xl md:text-4xl tracking-wide">
+                {gameState === 'LOADING_PROBLEM' ? (
                   <Loader className="h-12 w-12 animate-spin text-primary" />
                 ) : (
                   currentProblem?.problem || 'Loading...'
