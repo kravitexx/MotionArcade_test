@@ -38,6 +38,7 @@ export default function MathChallenge2Client() {
   const [timeLeft, setTimeLeft] = useState(PROBLEM_TIMER_SECONDS);
 
   useEffect(() => {
+    // We can only initialize Audio on the client side.
     if (typeof Audio !== 'undefined') {
         popAudioRef.current = new Audio('/pop.mp3');
     }
@@ -91,6 +92,10 @@ export default function MathChallenge2Client() {
 
 
   const startGame = useCallback(async () => {
+    // Attempt to play and pause the audio to unlock it for later.
+    // This is a common workaround for browser autoplay restrictions.
+    popAudioRef.current?.play().then(() => popAudioRef.current?.pause());
+
     setScore(0);
     setGameState('LOADING');
     await startVideo();
@@ -213,7 +218,7 @@ export default function MathChallenge2Client() {
                 <div
                   key={index}
                   ref={el => bubbleRefs.current[index] = el}
-                  className={`flex items-center justify-center rounded-full border-4 border-primary bg-primary/30 text-white font-bold transition-all duration-300 animate-float ${bubble.popped ? 'animate-pop' : ''} ${bubbleSize}`}
+                  className={`flex items-center justify-center rounded-full border-4 border-primary bg-primary/30 text-white font-bold transition-all duration-300 animate-float-gooey ${bubble.popped ? 'animate-pop' : ''} ${bubbleSize}`}
                   style={{ animationDelay: `${index * 150}ms` }}
                 >
                   {bubble.value}
