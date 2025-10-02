@@ -72,7 +72,10 @@ export default function MathChallengeClient() {
     setPastScores([]);
     setGameState('LOADING');
     await startVideo();
-    await fetchNewProblem();
+    const newProblem = await fetchNewProblem();
+    if (newProblem) {
+      setGameState('PLAYING');
+    }
   }, [startVideo, fetchNewProblem]);
   
   useEffect(() => {
@@ -84,13 +87,15 @@ export default function MathChallengeClient() {
   useEffect(() => {
     if (gameState !== 'PLAYING' || feedback) return;
 
-    if (detectedFingers !== lastAnswer) {
-      setLastAnswer(detectedFingers);
+    if (detectedFingers !== lastAnswer && detectedFingers > 0) {
+       setLastAnswer(detectedFingers);
       if (currentProblem && detectedFingers === currentProblem.solution) {
         setScore((s) => s + 1);
         setFeedback('correct');
         setGameState('FEEDBACK');
       }
+    } else if (detectedFingers === 0) {
+      setLastAnswer(null);
     }
   }, [detectedFingers, currentProblem, gameState, lastAnswer, feedback]);
 
@@ -146,12 +151,14 @@ export default function MathChallengeClient() {
       );
     }
 
+    const showLoading = gameState === 'LOADING' || isHandTrackingLoading || (gameState === 'LOADING_PROBLEM' && !currentProblem);
+
     return (
       <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
         <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-muted shadow-lg">
           <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]"></video>
           <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full"></canvas>
-          {(gameState === 'LOADING' || gameState === 'LOADING_PROBLEM' && !currentProblem) && (
+          {(showLoading) && (
             <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white">
               <Loader className="h-12 w-12 animate-spin" />
             </div>
@@ -164,14 +171,16 @@ export default function MathChallengeClient() {
         </div>
 
         <div className="flex flex-col gap-4 w-full">
-            <Card className="w-full p-6 text-center flex items-center justify-center min-h-[140px]">
-               <p className="font-headline text-3xl md:text-4xl tracking-wide">
+            <Card className="w-full p-6 text-center flex items-center justify-center flex-grow min-h-[140px] lg:min-h-[200px]">
+               <div className="flex items-center justify-center h-full">
                 {gameState === 'LOADING_PROBLEM' ? (
                   <Loader className="h-12 w-12 animate-spin text-primary" />
                 ) : (
-                  currentProblem?.problem || 'Loading...'
+                  <p className="font-headline text-3xl md:text-4xl tracking-wide">
+                    {currentProblem?.problem || 'Loading...'}
+                  </p>
                 )}
-              </p>
+              </div>
             </Card>
 
             <Card className="w-full p-4">
