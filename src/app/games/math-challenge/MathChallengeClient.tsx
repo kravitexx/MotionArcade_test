@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useHandTracking } from '@/hooks/use-hand-tracking';
 import { generateMathProblem, type GenerateMathProblemOutput } from '@/ai/flows/dynamic-math-problem-generation';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,7 @@ const PROBLEM_TIMER_SECONDS = 15;
 export default function MathChallengeClient() {
   const { videoRef, canvasRef, detectedFingers, startVideo, stopVideo, isLoading: isHandTrackingLoading, error: handTrackingError } = useHandTracking();
   const { toast } = useToast();
+  const toastIdRef = useRef<string | null>(null);
 
   const [gameState, setGameState] = useState<GameState>('IDLE');
   const [currentProblem, setCurrentProblem] = useState<GenerateMathProblemOutput | null>(null);
@@ -28,13 +29,21 @@ export default function MathChallengeClient() {
 
   useEffect(() => {
     if (handTrackingError) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: handTrackingError,
-      });
+      if (!toastIdRef.current) {
+        const { id } = toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: handTrackingError,
+        });
+        toastIdRef.current = id;
+      }
       setGameState('IDLE');
       stopVideo();
+    } else {
+      if (toastIdRef.current) {
+        // dismiss(); // `dismiss` is not available on `useToast`
+        toastIdRef.current = null;
+      }
     }
   }, [handTrackingError, toast, stopVideo]);
 
@@ -71,7 +80,7 @@ export default function MathChallengeClient() {
 
     if (detectedFingers !== lastAnswer) {
       setLastAnswer(detectedFingers);
-      if (detectedFingers === currentProblem?.solution) {
+      if (currentProblem && detectedFingers === currentProblem.solution) {
         setScore((s) => s + 1);
         setFeedback('correct');
         setGameState('FEEDBACK');
