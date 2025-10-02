@@ -1,15 +1,15 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useHandTracking } from '@/hooks/use-hand-tracking';
 import { generateMathProblem, type GenerateMathProblemOutput } from '@/ai/flows/dynamic-math-problem-generation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { CheckCircle2, XCircle, Loader, Camera, Hand, Timer } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader, Hand, Timer } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 
-type GameState = 'IDLE' | 'LOADING' | 'PLAYING' | 'FEEDBACK';
+type GameState = 'IDLE' | 'LOADING' | 'PLAYING' | 'FEEDBACK' | 'LOADING_PROBLEM';
 
 const FEEDBACK_DURATION = 1500;
 const PROBLEM_TIMER_SECONDS = 15;
@@ -52,12 +52,14 @@ export default function MathChallengeClient() {
       const problem = await generateMathProblem({ currentScore: score, pastScores });
       setCurrentProblem(problem);
       setTimeLeft(PROBLEM_TIMER_SECONDS);
+      return problem;
     } catch (error) {
       toast({
         variant: 'destructive',
         title: 'AI Error',
         description: 'Could not generate a new math problem.',
       });
+      return null;
     }
   }, [score, pastScores, toast]);
 
@@ -76,7 +78,7 @@ export default function MathChallengeClient() {
   }, [gameState, isHandTrackingLoading, currentProblem]);
   
   useEffect(() => {
-    if (gameState !== 'PLAYING') return;
+    if (gameState !== 'PLAYING' || feedback) return;
 
     if (detectedFingers !== lastAnswer) {
       setLastAnswer(detectedFingers);
@@ -86,7 +88,7 @@ export default function MathChallengeClient() {
         setGameState('FEEDBACK');
       }
     }
-  }, [detectedFingers, currentProblem, gameState, lastAnswer]);
+  }, [detectedFingers, currentProblem, gameState, lastAnswer, feedback]);
 
   useEffect(() => {
     if (gameState === 'PLAYING' && timeLeft > 0) {
@@ -107,8 +109,13 @@ export default function MathChallengeClient() {
         if (score > 0 && (feedback === 'correct' || timeLeft === 0)) {
            setPastScores(ps => [...ps, score]);
         }
-        fetchNewProblem().then(() => {
-          setGameState('PLAYING');
+        setGameState('LOADING_PROBLEM');
+        fetchNewProblem().then((newProblem) => {
+          if (newProblem) {
+            setGameState('PLAYING');
+          } else {
+            setGameState('IDLE'); // Or some error state
+          }
         });
       }, FEEDBACK_DURATION);
       return () => clearTimeout(timer);
@@ -130,10 +137,10 @@ export default function MathChallengeClient() {
 
     return (
       <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-        <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-muted shadow-lg">
+         <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-muted shadow-lg">
           <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]"></video>
-          <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full scale-x-[-1]"></canvas>
-          {gameState === 'LOADING' && (
+          <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full"></canvas>
+          {(gameState === 'LOADING' || gameState === 'LOADING_PROBLEM') && (
             <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white">
               <Loader className="h-12 w-12 animate-spin" />
             </div>
@@ -147,8 +154,12 @@ export default function MathChallengeClient() {
 
         <div className="flex flex-col gap-4 w-full">
             <Card className="w-full p-6 text-center">
-              <p className="font-headline text-4xl md:text-5xl tracking-wider">
-                {currentProblem?.problem || 'Loading problem...'}
+               <p className="font-headline text-4xl md:text-5xl tracking-wider h-[60px] flex items-center justify-center">
+                {(gameState === 'LOADING_PROBLEM') ? (
+                  <Loader className="h-12 w-12 animate-spin text-primary" />
+                ) : (
+                  currentProblem?.problem || 'Loading...'
+                )}
               </p>
             </Card>
 
