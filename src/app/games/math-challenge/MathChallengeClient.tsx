@@ -56,14 +56,14 @@ export default function MathChallengeClient() {
       const problem = await generateMathProblem({ currentScore: score, pastScores });
       setCurrentProblem(problem);
       setTimeLeft(PROBLEM_TIMER_SECONDS);
-      return problem;
+      setGameState('PLAYING');
     } catch (error) {
       toast({
         variant: 'destructive',
         title: 'AI Error',
         description: 'Could not generate a new math problem.',
       });
-      return null;
+      setGameState('IDLE');
     }
   }, [score, pastScores, toast]);
 
@@ -72,62 +72,54 @@ export default function MathChallengeClient() {
     setPastScores([]);
     setGameState('LOADING');
     await startVideo();
-    const newProblem = await fetchNewProblem();
-    if (newProblem) {
-      setGameState('PLAYING');
-    }
+    await fetchNewProblem();
   }, [startVideo, fetchNewProblem]);
   
+  const handleAnswer = useCallback((answer: 'correct' | 'incorrect') => {
+      setFeedback(answer);
+      setGameState('FEEDBACK');
+      if (answer === 'correct') {
+          setScore(s => s + 1);
+      }
+      if(score > 0){
+          setPastScores(ps => [...ps, score]);
+      }
+  }, [score]);
+
+
   useEffect(() => {
-    if ((gameState === 'LOADING' || gameState === 'LOADING_PROBLEM') && !isHandTrackingLoading && currentProblem) {
-      setGameState('PLAYING');
+    if (gameState === 'FEEDBACK') {
+      const timer = setTimeout(() => {
+        setFeedback(null);
+        setLastAnswer(null);
+        fetchNewProblem();
+      }, FEEDBACK_DURATION);
+      return () => clearTimeout(timer);
     }
-  }, [gameState, isHandTrackingLoading, currentProblem]);
-  
+  }, [gameState, fetchNewProblem]);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (gameState === 'PLAYING' && timeLeft > 0) {
+      timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
+    } else if (gameState === 'PLAYING' && timeLeft === 0) {
+      handleAnswer('incorrect');
+    }
+    return () => clearTimeout(timer);
+  }, [gameState, timeLeft, handleAnswer]);
+
   useEffect(() => {
     if (gameState !== 'PLAYING' || feedback) return;
 
     if (detectedFingers !== lastAnswer && detectedFingers > 0) {
        setLastAnswer(detectedFingers);
       if (currentProblem && detectedFingers === currentProblem.solution) {
-        setScore((s) => s + 1);
-        setFeedback('correct');
-        setGameState('FEEDBACK');
+        handleAnswer('correct');
       }
     } else if (detectedFingers === 0) {
       setLastAnswer(null);
     }
-  }, [detectedFingers, currentProblem, gameState, lastAnswer, feedback]);
-
-  useEffect(() => {
-    if (gameState === 'PLAYING' && timeLeft > 0) {
-      const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
-      return () => clearTimeout(timer);
-    } else if (gameState === 'PLAYING' && timeLeft === 0) {
-      setFeedback('incorrect');
-      setGameState('FEEDBACK');
-    }
-  }, [gameState, timeLeft]);
-
-
-  useEffect(() => {
-    if (gameState === 'FEEDBACK') {
-      const timer = setTimeout(async () => {
-        setFeedback(null);
-        setLastAnswer(null);
-        if (score > 0 && (feedback === 'correct' || timeLeft === 0)) {
-           setPastScores(ps => [...ps, score]);
-        }
-        const newProblem = await fetchNewProblem();
-        if (newProblem) {
-          setGameState('PLAYING');
-        } else {
-          setGameState('IDLE'); // Or some error state
-        }
-      }, FEEDBACK_DURATION);
-      return () => clearTimeout(timer);
-    }
-  }, [gameState, feedback, score, timeLeft, fetchNewProblem]);
+  }, [detectedFingers, currentProblem, gameState, lastAnswer, feedback, handleAnswer]);
 
   const renderGameState = () => {
     if (gameState === 'IDLE') {
@@ -151,7 +143,7 @@ export default function MathChallengeClient() {
       );
     }
 
-    const showLoading = gameState === 'LOADING' || isHandTrackingLoading || (gameState === 'LOADING_PROBLEM' && !currentProblem);
+    const showLoading = gameState === 'LOADING' || isHandTrackingLoading;
 
     return (
       <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
