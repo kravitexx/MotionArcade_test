@@ -14,9 +14,6 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 type GameState = 'IDLE' | 'LOADING' | 'PLAYING' | 'FEEDBACK' | 'LOADING_PROBLEM';
 type Bubble = {
   value: number;
-  x: number;
-  y: number;
-  radius: number;
   popped: boolean;
 };
 
@@ -29,6 +26,7 @@ export default function MathChallenge2Client() {
   const toastIdRef = useRef<string | null>(null);
   const isMobile = useIsMobile();
   const popAudioRef = useRef<HTMLAudioElement | null>(null);
+  const bubbleRefs = useRef<(HTMLDivElement | null)[]>([]);
 
 
   const [gameState, setGameState] = useState<GameState>('IDLE');
@@ -40,7 +38,6 @@ export default function MathChallenge2Client() {
   const [timeLeft, setTimeLeft] = useState(PROBLEM_TIMER_SECONDS);
 
   useEffect(() => {
-    // Preload audio
     if (typeof Audio !== 'undefined') {
         popAudioRef.current = new Audio('/pop.mp3');
     }
@@ -67,39 +64,20 @@ export default function MathChallenge2Client() {
   }, [handTrackingError, toast, stopVideo, dismiss]);
 
   const createBubbles = useCallback((problem: GenerateMathProblem2Output) => {
-    const canvas = canvasRef.current;
-    if (!canvas || !canvas.width) return [];
-
-    const newBubbles: Bubble[] = [];
-    const numOptions = problem.options.length;
-    const radius = isMobile ? 40 : 60;
-    const yPosition = canvas.height / 4; 
-
-    // Ensure bubbles are spread evenly and within bounds
-    const padding = radius + 10; // Padding from the edge
-    const availableWidth = canvas.width - (padding * 2);
-    const spacing = numOptions > 1 ? availableWidth / (numOptions - 1) : 0;
-
-    for (let i = 0; i < numOptions; i++) {
-        const xPosition = numOptions > 1 ? padding + (i * spacing) : canvas.width / 2;
-        newBubbles.push({
-            value: problem.options[i],
-            x: xPosition,
-            y: yPosition,
-            radius,
-            popped: false,
-        });
-    }
-    return newBubbles;
-  }, [isMobile]);
+    bubbleRefs.current = [];
+    return problem.options.map(option => ({
+        value: option,
+        popped: false,
+    }));
+  }, []);
 
   const fetchNewProblem = useCallback(async () => {
     setGameState('LOADING_PROBLEM');
     try {
       const problem = await generateMathProblem2({ currentScore: score });
       setCurrentProblem(problem);
+      setBubbles(createBubbles(problem));
       setTimeLeft(PROBLEM_TIMER_SECONDS);
-      // Bubbles will be created in an effect after canvas is ready
       setGameState('PLAYING');
     } catch (error) {
       toast({
@@ -109,16 +87,7 @@ export default function MathChallenge2Client() {
       });
       setGameState('IDLE');
     }
-  }, [score, toast]);
-
-  useEffect(() => {
-    if(gameState === 'PLAYING' && currentProblem && canvasRef.current?.width) {
-        const timeoutId = setTimeout(() => {
-            setBubbles(createBubbles(currentProblem));
-        }, 100); // Give canvas a moment to be ready
-        return () => clearTimeout(timeoutId);
-    }
-  }, [gameState, currentProblem, createBubbles, canvasRef.current?.width]);
+  }, [score, toast, createBubbles]);
 
 
   const startGame = useCallback(async () => {
@@ -172,20 +141,32 @@ export default function MathChallenge2Client() {
     const tipX = (1 - indexTip.x) * canvas.width;
     const tipY = indexTip.y * canvas.height;
 
-    bubbles.forEach((bubble, index) => {
-        if (bubble.popped) return;
+    bubbleRefs.current.forEach((bubbleDiv, index) => {
+        if (!bubbleDiv || bubbles[index].popped) return;
+        
+        const bubbleRect = bubbleDiv.getBoundingClientRect();
+        const canvasRect = canvas.getBoundingClientRect();
 
-        const distance = Math.sqrt(Math.pow(tipX - bubble.x, 2) + Math.pow(tipY - bubble.y, 2));
+        // Translate bubble coordinates to be relative to the canvas
+        const bubbleX = bubbleRect.left - canvasRect.left + bubbleRect.width / 2;
+        const bubbleY = bubbleRect.top - canvasRect.top + bubbleRect.height / 2;
+        const bubbleRadius = bubbleRect.width / 2;
+        
+        const distance = Math.sqrt(Math.pow(tipX - bubbleX, 2) + Math.pow(tipY - bubbleY, 2));
 
-        if (distance < bubble.radius) {
+        if (distance < bubbleRadius) {
             // Pop!
             popAudioRef.current?.play().catch(e => console.error("Audio play failed:", e));
-            const newBubbles = [...bubbles];
-            newBubbles[index].popped = true;
-            setBubbles(newBubbles);
-
-            const isCorrect = bubble.value === currentProblem?.correctAnswer;
-            handleAnswer(isCorrect ? 'correct' : 'incorrect', bubble.value);
+            
+            setBubbles(prevBubbles => {
+                const newBubbles = [...prevBubbles];
+                if (!newBubbles[index].popped) {
+                    newBubbles[index].popped = true;
+                    const isCorrect = newBubbles[index].value === currentProblem?.correctAnswer;
+                    handleAnswer(isCorrect ? 'correct' : 'incorrect', newBubbles[index].value);
+                }
+                return newBubbles;
+            });
         }
     });
 
@@ -215,13 +196,28 @@ export default function MathChallenge2Client() {
     }
 
     const showLoading = gameState === 'LOADING' || isHandTrackingLoading;
+    const bubbleSize = isMobile ? 'w-20 h-20 text-xl' : 'w-28 h-28 text-3xl';
 
     return (
       <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
         <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-muted shadow-lg">
           <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]"></video>
           <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full"></canvas>
-          {/* Bubbles are drawn on the hand-tracking canvas */}
+
+          {gameState === 'PLAYING' && (
+            <div className="absolute top-0 left-0 w-full h-1/2 flex justify-center items-center gap-4 px-4">
+              {bubbles.map((bubble, index) => (
+                <div
+                  key={index}
+                  ref={el => bubbleRefs.current[index] = el}
+                  className={`flex items-center justify-center rounded-full border-4 border-primary bg-primary/30 text-white font-bold transition-all duration-300 ${bubble.popped ? 'scale-150 opacity-0' : 'scale-100 opacity-100'} ${bubbleSize}`}
+                >
+                  {bubble.value}
+                </div>
+              ))}
+            </div>
+          )}
+
           {(showLoading) && (
             <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white">
               <Loader className="h-12 w-12 animate-spin" />
@@ -232,21 +228,7 @@ export default function MathChallenge2Client() {
               {feedback === 'correct' ? <CheckCircle2 className="h-32 w-32 text-green-400" /> : <XCircle className="h-32 w-32 text-red-400" />}
             </div>
           )}
-           {bubbles.map((bubble, index) => (
-            <div
-              key={index}
-              className={`absolute flex items-center justify-center rounded-full border-4 border-primary bg-primary/30 text-white font-bold text-2xl transition-all duration-300 ${bubble.popped ? 'scale-150 opacity-0' : 'scale-100 opacity-100'}`}
-              style={{
-                left: bubble.x - bubble.radius,
-                top: bubble.y - bubble.radius,
-                width: bubble.radius * 2,
-                height: bubble.radius * 2,
-              }}
-            >
-              {bubble.value}
-            </div>
-          ))}
-          {/* Draw a target for the index finger */}
+        
           {gameState === 'PLAYING' && landmarks.length > 0 && landmarks[0][8] && canvasRef.current && (
              <Target className="absolute text-cyan-400" style={{
                 left: `${(1-landmarks[0][8].x) * 100}%`,
