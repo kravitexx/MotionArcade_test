@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { HandLandmarker, FilesetResolver, DrawingUtils } from '@mediapipe/tasks-vision';
 import type { HandLandmarkerResult, Landmark, Handedness } from '@mediapipe/tasks-vision';
 import { useIsMobile } from './use-mobile';
@@ -70,7 +70,21 @@ export function useHandTracking(): HandTrackingHook {
     };
   }, [isMobile]);
 
-  const startVideo = async () => {
+  const stopVideo = useCallback(() => {
+    if (requestRef.current) {
+      cancelAnimationFrame(requestRef.current);
+    }
+    if (videoRef.current && videoRef.current.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => track.stop());
+      videoRef.current.srcObject = null;
+      if (videoRef.current) {
+        videoRef.current.removeEventListener('loadeddata', predictWebcam);
+      }
+    }
+  }, []);
+
+  const startVideo = useCallback(async () => {
     if (isLoading) return;
     if (videoRef.current && videoRef.current.srcObject) return; // Already running
 
@@ -95,23 +109,12 @@ export function useHandTracking(): HandTrackingHook {
         setError(`Could not access camera: ${err.message}`);
       }
     }
-  };
+  }, [isLoading, isMobile]);
 
-  const stopVideo = () => {
-    if (requestRef.current) {
-      cancelAnimationFrame(requestRef.current);
-    }
-    if (videoRef.current && videoRef.current.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream;
-      stream.getTracks().forEach(track => track.stop());
-      videoRef.current.srcObject = null;
-    }
-  };
-
-  const predictWebcam = () => {
+  const predictWebcam = useCallback(() => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas || !handLandmarkerRef.current) return;
+    if (!video || !canvas || !handLandmarkerRef.current || !video.srcObject) return;
     
     if (video.videoWidth === 0) { // Wait for video to be ready
         requestRef.current = requestAnimationFrame(predictWebcam);
@@ -145,7 +148,14 @@ export function useHandTracking(): HandTrackingHook {
     }
     
     const fingerCount = results.landmarks ? countFingers(results.landmarks, results.handedness) : 0;
-    setDetectedFingers(fingerCount);
+    
+    setDetectedFingers(prevFingers => {
+      if(prevFingers !== fingerCount) {
+        return fingerCount;
+      }
+      return prevFingers;
+    });
+
     setHandedness(results.handedness || []);
     setLandmarks(results.landmarks || []);
 
@@ -166,7 +176,21 @@ export function useHandTracking(): HandTrackingHook {
         const textHeight = 24;
         
         canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-        canvasCtx.roundRect(x - textWidth / 2 - 10, y - textHeight - 20, textWidth + 20, textHeight + 15, 8);
+        const rectX = x - textWidth / 2 - 10;
+        const rectY = y - textHeight - 20;
+        const rectW = textWidth + 20;
+        const rectH = textHeight + 15;
+        canvasCtx.beginPath();
+        canvasCtx.moveTo(rectX + 8, rectY);
+        canvasCtx.lineTo(rectX + rectW - 8, rectY);
+        canvasCtx.quadraticCurveTo(rectX + rectW, rectY, rectX + rectW, rectY + 8);
+        canvasCtx.lineTo(rectX + rectW, rectY + rectH - 8);
+        canvasCtx.quadraticCurveTo(rectX + rectW, rectY + rectH, rectX + rectW - 8, rectY + rectH);
+        canvasCtx.lineTo(rectX + 8, rectY + rectH);
+        canvasCtx.quadraticCurveTo(rectX, rectY + rectH, rectX, rectY + rectH - 8);
+        canvasCtx.lineTo(rectX, rectY + 8);
+        canvasCtx.quadraticCurveTo(rectX, rectY, rectX + 8, rectY);
+        canvasCtx.closePath();
         canvasCtx.fill();
         
         canvasCtx.fillStyle = 'white';
@@ -175,7 +199,7 @@ export function useHandTracking(): HandTrackingHook {
 
 
     requestRef.current = requestAnimationFrame(predictWebcam);
-  };
+  }, []);
 
   return { videoRef, canvasRef, detectedFingers, startVideo, stopVideo, isLoading, error, handedness, landmarks };
 }
