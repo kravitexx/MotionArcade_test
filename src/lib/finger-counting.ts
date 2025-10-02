@@ -1,13 +1,21 @@
 import type { Landmark, Handedness } from '@mediapipe/tasks-vision';
 
-const FINGER_TIPS = [4, 8, 12, 16, 20];
-const FINGER_PIPS = [3, 6, 10, 14, 18];
-const FINGER_DIPS = [0, 7, 11, 15, 19];
-const THUMB_TIP_INDEX = 4;
-const INDEX_FINGER_MCP_INDEX = 5;
-const INDEX_FINGER_PIP_INDEX = 6;
-const MIDDLE_FINGER_PIP_INDEX = 10;
+// landmark indices
+const THUMB_TIP = 4;
+const THUMB_IP = 3;
+const THUMB_MCP = 2;
 
+const INDEX_FINGER_TIP = 8;
+const INDEX_FINGER_PIP = 6;
+
+const MIDDLE_FINGER_TIP = 12;
+const MIDDLE_FINGER_PIP = 10;
+
+const RING_FINGER_TIP = 16;
+const RING_FINGER_PIP = 14;
+
+const PINKY_TIP = 20;
+const PINKY_PIP = 18;
 
 export function countFingers(landmarks: Landmark[][], handedness: Handedness[]): number {
   if (!landmarks || landmarks.length === 0) {
@@ -19,36 +27,38 @@ export function countFingers(landmarks: Landmark[][], handedness: Handedness[]):
   for (let i = 0; i < landmarks.length; i++) {
     const handLandmarks = landmarks[i];
     const hand = handedness[i] && handedness[i][0] ? handedness[i][0].categoryName : 'Unknown';
-
     let raisedFingers = 0;
 
-    // Fingers (Index, Middle, Ring, Pinky)
-    for (let j = 1; j < 5; j++) {
-      const tip = handLandmarks[FINGER_TIPS[j]];
-      const pip = handLandmarks[FINGER_PIPS[j]];
-      const dip = handLandmarks[FINGER_DIPS[j]];
-      if (tip.y < pip.y && pip.y < dip.y) {
-        raisedFingers++;
-      }
+    // Fingers (Index, Middle, Ring, Pinky) are considered "up" if the tip is above the PIP joint.
+    if (handLandmarks[INDEX_FINGER_TIP].y < handLandmarks[INDEX_FINGER_PIP].y) {
+      raisedFingers++;
+    }
+    if (handLandmarks[MIDDLE_FINGER_TIP].y < handLandmarks[MIDDLE_FINGER_PIP].y) {
+      raisedFingers++;
+    }
+    if (handLandmarks[RING_FINGER_TIP].y < handLandmarks[RING_FINGER_PIP].y) {
+      raisedFingers++;
+    }
+    if (handLandmarks[PINKY_TIP].y < handLandmarks[PINKY_PIP].y) {
+      raisedFingers++;
     }
 
-    // Thumb
-    const thumbTip = handLandmarks[THUMB_TIP_INDEX];
-    const indexPip = handLandmarks[INDEX_FINGER_PIP_INDEX];
-    const middlePip = handLandmarks[MIDDLE_FINGER_PIP_INDEX];
-
+    // Thumb is trickier. We check if the tip is further from the center of the hand
+    // horizontally than the joint below it.
     if (hand === 'Right') {
-        if (thumbTip.x < indexPip.x && thumbTip.y < indexPip.y && thumbTip.y < middlePip.y) {
-            raisedFingers++;
-        }
+      if (handLandmarks[THUMB_TIP].x < handLandmarks[THUMB_IP].x) {
+        raisedFingers++;
+      }
     } else if (hand === 'Left') {
-        if (thumbTip.x > indexPip.x && thumbTip.y < indexPip.y && thumbTip.y < middlePip.y) {
-            raisedFingers++;
-        }
+      if (handLandmarks[THUMB_TIP].x > handLandmarks[THUMB_IP].x) {
+        raisedFingers++;
+      }
     }
     
     totalFingers += raisedFingers;
   }
   
+  // Since we check two hands, we sum them up. But if only one hand is visible, this is fine.
+  // The current logic in the game only seems to care about the total number anyway.
   return totalFingers;
 }
