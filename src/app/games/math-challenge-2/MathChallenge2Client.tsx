@@ -132,27 +132,33 @@ export default function MathChallenge2Client() {
     if (gameState !== 'PLAYING' || !landmarks.length || !canvasRef.current) return;
     
     const canvas = canvasRef.current;
+    const canvasRect = canvas.getBoundingClientRect();
+
     // Index finger tip is landmark 8
     const indexTip = landmarks[0][8]; 
     if (!indexTip) return;
 
-    // The landmarks are normalized (0-1). We need to convert them to canvas coordinates.
+    // The landmarks are normalized (0-1). We need to convert them to canvas/video coordinates.
     // The video is mirrored, so we flip the x-coordinate.
-    const tipX = (1 - indexTip.x) * canvas.width;
-    const tipY = indexTip.y * canvas.height;
+    const tipX_video = (1 - indexTip.x) * canvas.width;
+    const tipY_video = indexTip.y * canvas.height;
+    
+    // Now convert video coordinates to absolute page coordinates
+    const tipX_page = tipX_video + canvasRect.left;
+    const tipY_page = tipY_video + canvasRect.top;
+
 
     bubbleRefs.current.forEach((bubbleDiv, index) => {
         if (!bubbleDiv || bubbles[index].popped) return;
         
         const bubbleRect = bubbleDiv.getBoundingClientRect();
-        const canvasRect = canvas.getBoundingClientRect();
-
-        // Translate bubble coordinates to be relative to the canvas
-        const bubbleX = bubbleRect.left - canvasRect.left + bubbleRect.width / 2;
-        const bubbleY = bubbleRect.top - canvasRect.top + bubbleRect.height / 2;
+        
+        // Center of the bubble in page coordinates
+        const bubbleX = bubbleRect.left + bubbleRect.width / 2;
+        const bubbleY = bubbleRect.top + bubbleRect.height / 2;
         const bubbleRadius = bubbleRect.width / 2;
         
-        const distance = Math.sqrt(Math.pow(tipX - bubbleX, 2) + Math.pow(tipY - bubbleY, 2));
+        const distance = Math.sqrt(Math.pow(tipX_page - bubbleX, 2) + Math.pow(tipY_page - bubbleY, 2));
 
         if (distance < bubbleRadius) {
             // Pop!
@@ -160,9 +166,10 @@ export default function MathChallenge2Client() {
             
             setBubbles(prevBubbles => {
                 const newBubbles = [...prevBubbles];
-                if (!newBubbles[index].popped) {
+                if (!newBubbles[index].popped) { // Prevent multiple pops
                     newBubbles[index].popped = true;
                     const isCorrect = newBubbles[index].value === currentProblem?.correctAnswer;
+                    // Important: Use a function for setState to ensure we handle the answer only once
                     handleAnswer(isCorrect ? 'correct' : 'incorrect', newBubbles[index].value);
                 }
                 return newBubbles;
@@ -170,7 +177,7 @@ export default function MathChallenge2Client() {
         }
     });
 
-  }, [landmarks, gameState, bubbles, currentProblem, handleAnswer]);
+  }, [landmarks, gameState, bubbles, currentProblem, handleAnswer, canvasRef]);
 
 
   const renderGameState = () => {
