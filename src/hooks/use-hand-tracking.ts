@@ -124,23 +124,48 @@ export function useHandTracking(): HandTrackingHook {
       if (results.landmarks) {
         for (const landmark of results.landmarks) {
           drawingUtilsRef.current.drawConnectors(landmark, HandLandmarker.HAND_CONNECTIONS, {
-            color: '#D8BFD8',
-            lineWidth: 3,
+            color: 'rgba(216, 191, 216, 0.7)',
+            lineWidth: 2,
           });
-          drawingUtilsRef.current.drawLandmarks(landmark, { color: '#E6E6FA', lineWidth: 1, radius: 3 });
+          drawingUtilsRef.current.drawLandmarks(landmark, { color: 'rgba(230, 230, 250, 0.9)', lineWidth: 1, radius: 2 });
         }
       }
     }
+    
+    const fingerCount = results.landmarks ? countFingers(results.landmarks, results.handedness) : 0;
+    setDetectedFingers(fingerCount);
+    setHandedness(results.handedness || []);
+    setLandmarks(results.landmarks || []);
 
-    if (results.landmarks) {
-        const fingerCount = countFingers(results.landmarks, results.handedness);
-        setDetectedFingers(fingerCount);
-        setHandedness(results.handedness);
-        setLandmarks(results.landmarks);
-    } else {
-        setDetectedFingers(0);
-        setHandedness([]);
-        setLandmarks([]);
+
+    if (canvasCtx && results.landmarks.length > 0) {
+        const topOfHand = results.landmarks[0].reduce((min, lm) => (lm.y < min.y ? lm : min), results.landmarks[0][0]);
+        const x = topOfHand.x * canvas.width;
+        const y = topOfHand.y * canvas.height;
+
+        canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        canvasCtx.font = 'bold 24px "Space Grotesk", sans-serif';
+        canvasCtx.textAlign = 'center';
+
+        const text = `Fingers: ${fingerCount}`;
+        const textMetrics = canvasCtx.measureText(text);
+        const textWidth = textMetrics.width;
+        const textHeight = 24;
+
+        // Flip the text horizontally to match the mirrored video
+        canvasCtx.save();
+        canvasCtx.scale(-1, 1);
+
+        const flippedX = -x;
+        
+        canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        canvasCtx.roundRect(flippedX - textWidth / 2 - 10, y - textHeight - 20, textWidth + 20, textHeight + 15, 8);
+        canvasCtx.fill();
+        
+        canvasCtx.fillStyle = 'white';
+        canvasCtx.fillText(text, flippedX, y - 10);
+        
+        canvasCtx.restore();
     }
 
 
