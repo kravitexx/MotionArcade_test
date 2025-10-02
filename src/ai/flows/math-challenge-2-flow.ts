@@ -17,8 +17,8 @@ export type GenerateMathProblem2Input = z.infer<typeof GenerateMathProblem2Input
 
 const GenerateMathProblem2OutputSchema = z.object({
   problem: z.string().describe('A math problem, can be symbolic or a word problem.'),
-  options: z.array(z.number()).min(4).max(6).describe('An array of 4-6 numerical answer options.'),
-  correctAnswer: z.number().describe('The correct numerical answer, which must be one of the options.'),
+  options: z.array(z.number()).min(4).max(6).describe('An array of 4-6 plausible integer answer options.'),
+  correctAnswer: z.number().int().describe('The correct integer answer, which must be one of the options.'),
 });
 export type GenerateMathProblem2Output = z.infer<typeof GenerateMathProblem2OutputSchema>;
 
@@ -33,21 +33,29 @@ const prompt = ai.definePrompt({
   output: {schema: GenerateMathProblem2OutputSchema},
   prompt: `You are an expert math problem generator for a children's game. The problems should be tailored to the player's skill level, based on their score.
 
-  The generated math problem must:
-  * Have a numerical answer.
-  * Be a mix of symbolic arithmetic (e.g., "50% of 100") and short word problems.
-  * Provide between 4 and 6 plausible multiple-choice options, which must all be integers.
-  * One of the options must be the correct integer answer.
+  The generated math problem MUST:
+  * Have an integer as the final answer.
+  * Be a mix of symbolic arithmetic (e.g., "5 * 2") and short word problems.
+  * Provide between 4 and 6 plausible multiple-choice options, which MUST all be integers.
+  * One of the options MUST be the correct integer answer.
+  * Do NOT generate problems involving percentages, fractions, or decimals. Stick to whole numbers.
 
   Here is the player's current score: {{{currentScore}}}. A higher score means a more difficult question.
 
   Generate a math problem, a set of options, and identify the correct answer.
 
-  Example:
+  Example 1 (Symbolic):
   {
-    "problem": "What is 50% of 100?",
-    "options": [20, 30, 80, 50, 60],
-    "correctAnswer": 50
+    "problem": "What is 7 + 3?",
+    "options": [8, 10, 12, 14],
+    "correctAnswer": 10
+  }
+
+  Example 2 (Word Problem):
+  {
+    "problem": "If a cat has 4 legs, how many legs do 2 cats have?",
+    "options": [4, 6, 8, 10, 2],
+    "correctAnswer": 8
   }
   `,
 });

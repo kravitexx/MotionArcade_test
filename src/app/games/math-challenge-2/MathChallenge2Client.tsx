@@ -10,6 +10,7 @@ import { CheckCircle2, XCircle, Loader, Timer, Smartphone, Target } from 'lucide
 import { Progress } from '@/components/ui/progress';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import PopSfx from 'public/pop.mp3';
 
 type GameState = 'IDLE' | 'LOADING' | 'PLAYING' | 'FEEDBACK' | 'LOADING_PROBLEM';
 type Bubble = {
@@ -298,7 +299,7 @@ export default function MathChallenge2Client() {
   return (
     <div className="container mx-auto px-4 py-8 flex flex-col items-center justify-center min-h-[calc(100vh-56px)]">
       {renderGameState()}
-      <audio ref={popAudioRef} src="/pop.mp3" preload="auto"></audio>
+      <audio ref={popAudioRef} src={PopSfx} preload="auto"></audio>
     </div>
   );
 }
