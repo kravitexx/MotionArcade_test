@@ -68,7 +68,7 @@ export default function MathChallenge2Client() {
 
   const createBubbles = useCallback((problem: GenerateMathProblem2Output) => {
     const canvas = canvasRef.current;
-    if (!canvas) return [];
+    if (!canvas || !canvas.width) return [];
 
     const newBubbles: Bubble[] = [];
     const numOptions = problem.options.length;
@@ -76,8 +76,13 @@ export default function MathChallenge2Client() {
     // Distribute bubbles across the top 1/3 of the screen
     const yPosition = canvas.height / 4; 
 
+    const availableWidth = canvas.width - (radius * 2); // Subtract radius from each side for padding
+    const spacing = availableWidth / (numOptions -1 > 0 ? numOptions -1 : 1);
+
+
     for (let i = 0; i < numOptions; i++) {
-        const xPosition = (canvas.width / (numOptions + 1)) * (i + 1);
+        // if only one bubble, center it. Otherwise space them out
+        const xPosition = numOptions > 1 ? (radius) + (i * spacing) : canvas.width / 2;
         newBubbles.push({
             value: problem.options[i],
             x: xPosition,
@@ -108,10 +113,13 @@ export default function MathChallenge2Client() {
   }, [score, toast]);
 
   useEffect(() => {
-    if(gameState === 'PLAYING' && currentProblem && canvasRef.current) {
-        setBubbles(createBubbles(currentProblem));
+    if(gameState === 'PLAYING' && currentProblem && canvasRef.current?.width) {
+        const timeoutId = setTimeout(() => {
+            setBubbles(createBubbles(currentProblem));
+        }, 100); // Give canvas a moment to be ready
+        return () => clearTimeout(timeoutId);
     }
-  }, [gameState, currentProblem, createBubbles]);
+  }, [gameState, currentProblem, createBubbles, canvasRef.current?.width]);
 
 
   const startGame = useCallback(async () => {
@@ -240,7 +248,7 @@ export default function MathChallenge2Client() {
             </div>
           ))}
           {/* Draw a target for the index finger */}
-          {landmarks.length > 0 && canvasRef.current && (
+          {gameState === 'PLAYING' && landmarks.length > 0 && landmarks[0][8] && canvasRef.current && (
              <Target className="absolute text-cyan-400" style={{
                 left: `${(1-landmarks[0][8].x) * 100}%`,
                 top: `${landmarks[0][8].y * 100}%`,
