@@ -33,11 +33,10 @@ const prompt = ai.definePrompt({
   prompt: `You are an expert math problem generator for a children's game. The problems should be tailored to the player's skill level, based on their current and past scores.
 
   The generated math problem must:
-  * Be a simple, symbolic arithmetic problem (e.g., "4 + 2" or "8 - 3").
-  * DO NOT generate word problems or sentences.
   * Only use integers.
   * Have a solution between 0 and 10, inclusive.
   * Only use the following operations: addition, subtraction, multiplication, and division.
+  * The problem can be a symbolic arithmetic problem (e.g., "4 + 2") or a short word problem (e.g., "If Sam has 3 apples and Ram has 4 apples, how many apples are there?").
 
   Here is the player's current score: {{{currentScore}}}
   Here are the player's past scores: {{{pastScores}}}
@@ -45,11 +44,18 @@ const prompt = ai.definePrompt({
   Generate a math problem and the solution to that problem.
   Ensure that you do not include the solution in the problem itself, and that the solution matches the value in the "solution" output field.
 
-  For example:
+  For example (symbolic):
   {
     "problem": "5 + 3?",
     "solution": 8
-  }`,
+  }
+
+  For example (word problem):
+  {
+    "problem": "A car has 4 wheels. How many wheels do 2 cars have?",
+    "solution": 8
+  }
+  `,
 });
 
 const generateMathProblemFlow = ai.defineFlow(
