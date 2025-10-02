@@ -30,6 +30,7 @@ export default function QuizQuestClient() {
   const [timeLeft, setTimeLeft] = useState(PROBLEM_TIMER_SECONDS);
   const [answerHoldTime, setAnswerHoldTime] = useState(0);
   const [potentialAnswer, setPotentialAnswer] = useState<number | null>(null);
+  const [lastSubmittedAnswer, setLastSubmittedAnswer] = useState<number | null>(null);
 
   useEffect(() => {
     if (handTrackingError) {
@@ -75,9 +76,10 @@ export default function QuizQuestClient() {
     await fetchNewProblem();
   }, [startVideo, fetchNewProblem]);
   
-  const handleAnswer = useCallback((answer: 'correct' | 'incorrect') => {
+  const handleAnswer = useCallback((answer: 'correct' | 'incorrect', submitted: number) => {
       setFeedback(answer);
       setGameState('FEEDBACK');
+      setLastSubmittedAnswer(submitted);
       if (answer === 'correct') {
           setScore(s => s + 1);
       }
@@ -87,6 +89,7 @@ export default function QuizQuestClient() {
     setFeedback(null);
     setPotentialAnswer(null);
     setAnswerHoldTime(0);
+    setLastSubmittedAnswer(null);
     fetchNewProblem();
   }, [fetchNewProblem]);
 
@@ -98,7 +101,7 @@ export default function QuizQuestClient() {
     } else if (gameState === 'PLAYING' && timeLeft > 0) {
       gameLoopTimer = setTimeout(() => setTimeLeft(t => t - 1), 1000);
     } else if (gameState === 'PLAYING' && timeLeft === 0) {
-      handleAnswer('incorrect');
+      handleAnswer('incorrect', 0);
     }
 
     return () => clearTimeout(gameLoopTimer);
@@ -124,7 +127,9 @@ export default function QuizQuestClient() {
   useEffect(() => {
     if (answerHoldTime >= ANSWER_HOLD_SECONDS && potentialAnswer && currentProblem) {
       const isCorrect = (potentialAnswer - 1) === currentProblem.correctAnswerIndex;
-      handleAnswer(isCorrect ? 'correct' : 'incorrect');
+      handleAnswer(isCorrect ? 'correct' : 'incorrect', potentialAnswer);
+      // Reset hold time to prevent re-triggering
+      setAnswerHoldTime(0);
     }
   }, [answerHoldTime, potentialAnswer, currentProblem, handleAnswer]);
 
@@ -184,7 +189,7 @@ export default function QuizQuestClient() {
                       {currentProblem?.options.map((option, index) => (
                         <Card 
                           key={index} 
-                          className={`p-3 text-sm md:text-base border-2 ${feedback && currentProblem.correctAnswerIndex === index ? 'border-green-400 bg-green-400/10' : ''} ${feedback === 'incorrect' && potentialAnswer === index + 1 ? 'border-red-400 bg-red-400/10' : ''}`}
+                          className={`p-3 text-sm md:text-base border-2 ${feedback && currentProblem.correctAnswerIndex === index ? 'border-green-400 bg-green-400/10' : ''} ${feedback === 'incorrect' && lastSubmittedAnswer === index + 1 ? 'border-red-400 bg-red-400/10' : ''}`}
                         >
                           <span className="font-bold mr-2">{index + 1}.</span>{option}
                         </Card>
