@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calculator } from 'lucide-react';
+import { Calculator, BrainCircuit } from 'lucide-react';
 import Link from 'next/link';
 
 const games = [
@@ -9,6 +9,12 @@ const games = [
     description: 'Solve dynamic math problems using your hands! Show the correct number of fingers to answer questions and test your arithmetic skills.',
     href: '/games/math-challenge',
     icon: <Calculator className="h-8 w-8 text-primary" />,
+  },
+  {
+    title: 'Quiz Quest',
+    description: 'Answer trivia questions by showing the number of fingers corresponding to your chosen option. Hold your answer to lock it in!',
+    href: '/games/quiz-quest',
+    icon: <BrainCircuit className="h-8 w-8 text-primary" />,
   },
 ];
 
