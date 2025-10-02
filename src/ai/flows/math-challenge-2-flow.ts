@@ -36,8 +36,8 @@ const prompt = ai.definePrompt({
   The generated math problem must:
   * Have a numerical answer.
   * Be a mix of symbolic arithmetic (e.g., "50% of 100") and short word problems.
-  * Provide between 4 and 6 plausible multiple-choice options.
-  * One of the options must be the correct answer.
+  * Provide between 4 and 6 plausible multiple-choice options, which must all be integers.
+  * One of the options must be the correct integer answer.
 
   Here is the player's current score: {{{currentScore}}}. A higher score means a more difficult question.
 

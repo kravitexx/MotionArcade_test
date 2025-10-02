@@ -38,13 +38,6 @@ export default function MathChallenge2Client() {
   const [timeLeft, setTimeLeft] = useState(PROBLEM_TIMER_SECONDS);
 
   useEffect(() => {
-    // We can only initialize Audio on the client side.
-    if (typeof Audio !== 'undefined') {
-        popAudioRef.current = new Audio('/pop.mp3');
-    }
-  }, []);
-
-  useEffect(() => {
     if (handTrackingError) {
       if (!toastIdRef.current) {
         const { id } = toast({
@@ -94,7 +87,14 @@ export default function MathChallenge2Client() {
   const startGame = useCallback(async () => {
     // Attempt to play and pause the audio to unlock it for later.
     // This is a common workaround for browser autoplay restrictions.
-    popAudioRef.current?.play().then(() => popAudioRef.current?.pause());
+    if (popAudioRef.current) {
+      popAudioRef.current.muted = true;
+      popAudioRef.current.play().then(() => {
+        popAudioRef.current?.pause();
+        popAudioRef.current!.muted = false;
+        popAudioRef.current!.currentTime = 0;
+      }).catch(e => console.error("Audio unlock failed:", e));
+    }
 
     setScore(0);
     setGameState('LOADING');
@@ -163,7 +163,10 @@ export default function MathChallenge2Client() {
         
         if (distance < bubbleRadius) {
             // Pop!
-            popAudioRef.current?.play().catch(e => console.error("Audio play failed:", e));
+            if (popAudioRef.current) {
+              popAudioRef.current.currentTime = 0;
+              popAudioRef.current.play().catch(e => console.error("Audio play failed:", e));
+            }
             
             setBubbles(prevBubbles => {
                 const newBubbles = [...prevBubbles];
@@ -295,6 +298,7 @@ export default function MathChallenge2Client() {
   return (
     <div className="container mx-auto px-4 py-8 flex flex-col items-center justify-center min-h-[calc(100vh-56px)]">
       {renderGameState()}
+      <audio ref={popAudioRef} src="/pop.mp3" preload="auto"></audio>
     </div>
   );
 }
