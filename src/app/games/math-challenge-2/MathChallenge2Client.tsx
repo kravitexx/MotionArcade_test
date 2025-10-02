@@ -73,16 +73,15 @@ export default function MathChallenge2Client() {
     const newBubbles: Bubble[] = [];
     const numOptions = problem.options.length;
     const radius = isMobile ? 40 : 60;
-    // Distribute bubbles across the top 1/3 of the screen
     const yPosition = canvas.height / 4; 
 
-    const availableWidth = canvas.width - (radius * 2); // Subtract radius from each side for padding
-    const spacing = availableWidth / (numOptions -1 > 0 ? numOptions -1 : 1);
-
+    // Ensure bubbles are spread evenly and within bounds
+    const padding = radius + 10; // Padding from the edge
+    const availableWidth = canvas.width - (padding * 2);
+    const spacing = numOptions > 1 ? availableWidth / (numOptions - 1) : 0;
 
     for (let i = 0; i < numOptions; i++) {
-        // if only one bubble, center it. Otherwise space them out
-        const xPosition = numOptions > 1 ? (radius) + (i * spacing) : canvas.width / 2;
+        const xPosition = numOptions > 1 ? padding + (i * spacing) : canvas.width / 2;
         newBubbles.push({
             value: problem.options[i],
             x: xPosition,
