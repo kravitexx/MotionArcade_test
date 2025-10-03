@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calculator, BrainCircuit, Waves } from 'lucide-react';
+import { Calculator, BrainCircuit, Waves, Pencil } from 'lucide-react';
 import Link from 'next/link';
 
 const games = [
@@ -21,6 +21,12 @@ const games = [
     description: 'A more physical challenge! Pop the bubbles with the correct answer using your hands. Move your body and test your math skills.',
     href: '/games/math-challenge-2',
     icon: <Waves className="h-8 w-8 text-primary" />,
+  },
+  {
+    title: 'Sketch & Score',
+    description: 'Draw the shape you see on screen using your index finger. Use gestures to switch between pencil and eraser. A creative challenge!',
+    href: '/games/sketch-and-score',
+    icon: <Pencil className="h-8 w-8 text-primary" />,
   },
 ];
 

@@ -7,6 +7,8 @@ import { Loader } from 'lucide-react';
 import { generateMathProblem } from '@/ai/flows/dynamic-math-problem-generation';
 import { generateMathProblem2 } from '@/ai/flows/math-challenge-2-flow';
 import { generateQuizQuestion } from '@/ai/flows/quiz-quest-flow';
+import { generateShapeToDraw } from '@/ai/flows/shape-challenge-flow';
+
 
 type TestResult = {
   flow: string;
@@ -46,6 +48,11 @@ export default function DebugPage() {
     'Quiz Quest',
     () => generateQuizQuestion({ currentScore: 5, subjects: ['Science', 'History'] })
   );
+  
+  const testSketchAndScore = () => handleTest(
+    'Sketch & Score',
+    () => generateShapeToDraw()
+  );
 
   return (
     <div className="container mx-auto px-4 py-12">
@@ -59,7 +66,7 @@ export default function DebugPage() {
           </p>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <div className="flex flex-col sm:flex-row gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Button onClick={testMathChallenge1} disabled={!!loadingFlow} className="flex-1">
               {loadingFlow === 'Math Challenge' && <Loader className="mr-2 h-4 w-4 animate-spin" />}
               Test Math Challenge
@@ -71,6 +78,10 @@ export default function DebugPage() {
             <Button onClick={testQuizQuest} disabled={!!loadingFlow} className="flex-1">
               {loadingFlow === 'Quiz Quest' && <Loader className="mr-2 h-4 w-4 animate-spin" />}
               Test Quiz Quest
+            </Button>
+            <Button onClick={testSketchAndScore} disabled={!!loadingFlow} className="flex-1">
+              {loadingFlow === 'Sketch & Score' && <Loader className="mr-2 h-4 w-4 animate-spin" />}
+              Test Sketch & Score
             </Button>
           </div>
 
