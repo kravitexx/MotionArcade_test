@@ -197,96 +197,97 @@ export default function SketchAndScoreClient() {
 
   // Main gesture detection logic
   useEffect(() => {
-    if (!landmarks.length || !handedness.length || isHandTrackingLoading || gameState === 'SUBMITTING' || gameState === 'FEEDBACK') return;
-    
-    let leftHandFingers = 0;
-    let rightHandFingers = 0;
-    let rightHandLandmarks: typeof landmarks[0] | null = null;
+    if (!landmarks.length || isHandTrackingLoading || gameState === 'SUBMITTING' || gameState === 'FEEDBACK') return;
 
-    // Assign landmarks and finger counts to the correct hands
-    for (let i = 0; i < handedness.length; i++) {
-      const hand = handedness[i][0];
-      if (!hand) continue;
-      
-      const handLandmarks = landmarks[i];
-      const fingerCount = countFingersForHand(handLandmarks);
+    let totalFingers = 0;
+    landmarks.forEach(hand => {
+        totalFingers += countFingersForHand(hand);
+    });
 
-      if (hand.categoryName === 'Left') {
-          leftHandFingers = fingerCount;
-      } else if (hand.categoryName === 'Right') {
-          rightHandFingers = fingerCount;
-          rightHandLandmarks = handLandmarks;
-      }
-    }
-    const totalFingers = leftHandFingers + rightHandFingers;
-    
     if (gameState === 'GET_READY' && totalFingers === 10) {
         setCountdown(COUNTDOWN_SECONDS);
         setGameState('COUNTDOWN');
         return;
-    } 
-    
-    if (gameState === 'DRAWING') {
-      if (totalFingers >= 10) {
-          clearCanvas();
-          lastPosition.current = null;
-          toast({ title: "Canvas Cleared!" });
-          return;
-      }
-
-      // Gesture for tool switching
-      if (leftHandFingers === 3) {
-        if(drawingTool !== 'ERASER') setDrawingTool('ERASER');
-      } else {
-        if(drawingTool !== 'PENCIL') setDrawingTool('PENCIL');
-      }
-      
-      // Gesture for pausing
-      const isPaused = leftHandFingers === 5;
-      if (isPaused) {
-        lastPosition.current = null;
-        return; // Don't draw if paused
-      }
-
-      // Drawing logic
-      if (rightHandLandmarks && isPointing(rightHandLandmarks)) {
-        const indexTip = rightHandLandmarks[8];
-        const ctx = getDrawingContext();
-
-        if (drawingCanvasRef.current && indexTip && ctx) {
-          const canvas = drawingCanvasRef.current;
-          const x = (1 - indexTip.x) * canvas.width; 
-          const y = indexTip.y * canvas.height;
-
-           if (drawingTool === 'PENCIL') {
-            ctx.globalCompositeOperation = 'source-over';
-            ctx.strokeStyle = 'black';
-            ctx.lineWidth = 5;
-          } else { // ERASER
-            ctx.globalCompositeOperation = 'destination-out';
-            ctx.lineWidth = 25;
-          }
-
-          ctx.beginPath();
-          ctx.lineCap = 'round';
-          ctx.lineJoin = 'round';
-
-          if (lastPosition.current) {
-            ctx.moveTo(lastPosition.current.x, lastPosition.current.y);
-          } else {
-            // This is the first point, move to it without drawing a line
-            ctx.moveTo(x, y);
-          }
-          ctx.lineTo(x, y);
-          ctx.stroke();
-          lastPosition.current = { x, y };
-        } 
-      } else {
-          // If not pointing, lift the "pencil"
-          lastPosition.current = null;
-      }
     }
-  }, [landmarks, handedness, gameState, drawingTool, clearCanvas, toast, getDrawingContext, isHandTrackingLoading]);
+
+    if (gameState === 'DRAWING') {
+        if (totalFingers >= 10) {
+            clearCanvas();
+            lastPosition.current = null;
+            toast({ title: "Canvas Cleared!" });
+            return;
+        }
+
+        let primaryHand = null;
+        let secondaryHand = null;
+
+        // Find the primary hand (the one pointing)
+        if (landmarks[0] && isPointing(landmarks[0])) {
+            primaryHand = landmarks[0];
+            secondaryHand = landmarks[1];
+        } else if (landmarks[1] && isPointing(landmarks[1])) {
+            primaryHand = landmarks[1];
+            secondaryHand = landmarks[0];
+        }
+
+        let isPaused = false;
+        let useEraser = false;
+
+        if (secondaryHand) {
+            const secondaryFingers = countFingersForHand(secondaryHand);
+            if (secondaryFingers === 5) {
+                isPaused = true;
+            } else if (secondaryFingers === 3) {
+                useEraser = true;
+            }
+        }
+        
+        // Set tool based on gesture
+        if (useEraser) {
+            if (drawingTool !== 'ERASER') setDrawingTool('ERASER');
+        } else {
+            if (drawingTool !== 'PENCIL') setDrawingTool('PENCIL');
+        }
+
+        // Handle drawing
+        if (primaryHand && !isPaused) {
+            const indexTip = primaryHand[8];
+            const ctx = getDrawingContext();
+            
+            if (drawingCanvasRef.current && indexTip && ctx) {
+                const canvas = drawingCanvasRef.current;
+                // Flip the X coordinate because the video is mirrored
+                const x = (1 - indexTip.x) * canvas.width;
+                const y = indexTip.y * canvas.height;
+
+                if (drawingTool === 'PENCIL') {
+                    ctx.globalCompositeOperation = 'source-over';
+                    ctx.strokeStyle = 'black';
+                    ctx.lineWidth = 5;
+                } else { // ERASER
+                    ctx.globalCompositeOperation = 'destination-out';
+                    ctx.lineWidth = 25;
+                }
+                
+                ctx.beginPath();
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+
+                if (lastPosition.current) {
+                    ctx.moveTo(lastPosition.current.x, lastPosition.current.y);
+                } else {
+                    ctx.moveTo(x, y);
+                }
+                ctx.lineTo(x, y);
+                ctx.stroke();
+                lastPosition.current = { x, y };
+            }
+        } else {
+            // Lift the "pencil" if not pointing or if paused
+            lastPosition.current = null;
+        }
+    }
+}, [landmarks, handedness, gameState, drawingTool, clearCanvas, toast, getDrawingContext, isHandTrackingLoading]);
   
   
   // Keep drawing canvas size in sync with video
