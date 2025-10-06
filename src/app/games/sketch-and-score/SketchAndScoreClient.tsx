@@ -83,13 +83,13 @@ export default function SketchAndScoreClient() {
   }, []);
 
   const handleSubmit = async () => {
-    if(!drawingCanvasRef.current) return;
+    if(!drawingCanvasRef.current || !shapeToDraw) return;
     setGameState('SUBMITTING');
 
     const drawingDataUri = drawingCanvasRef.current.toDataURL('image/png');
 
     try {
-        const result = await evaluatePlayerDrawing({ shapeToDraw: shapeToDraw!, drawingDataUri });
+        const result = await evaluatePlayerDrawing({ shapeToDraw: shapeToDraw, drawingDataUri });
         setFeedback({ isMatch: result.isMatch, message: result.feedback });
         if(result.isMatch) {
             setScore(s => s + 1);
@@ -189,7 +189,33 @@ export default function SketchAndScoreClient() {
   // Helper to count fingers for a single hand
   const countFingersForHand = (handLandmarks: any[]): number => {
     if (!handLandmarks) return 0;
-    return countFingers([handLandmarks], []);
+    // This is a simplified finger counting logic. A more robust one might be needed.
+    const thumbTip = handLandmarks[4];
+    const indexTip = handLandmarks[8];
+    const middleTip = handLandmarks[12];
+    const ringTip = handLandmarks[16];
+    const pinkyTip = handLandmarks[20];
+    
+    const indexMcp = handLandmarks[5];
+    const middleMcp = handLandmarks[9];
+    const ringMcp = handLandmarks[13];
+    const pinkyMcp = handLandmarks[17];
+    
+    let raisedFingers = 0;
+    if (indexTip.y < indexMcp.y) raisedFingers++;
+    if (middleTip.y < middleMcp.y) raisedFingers++;
+    if (ringTip.y < ringMcp.y) raisedFingers++;
+    if (pinkyTip.y < pinkyMcp.y) raisedFingers++;
+    
+    // A simple thumb check, might need refinement
+    const handednessName = handedness.find(h => h.displayName)?.categoryName || 'Right';
+    if (handednessName === 'Right') {
+      if (thumbTip.x < handLandmarks[2].x) raisedFingers++;
+    } else {
+      if (thumbTip.x > handLandmarks[2].x) raisedFingers++;
+    }
+
+    return raisedFingers;
   };
   
   // Keep drawing canvas size in sync with video
@@ -198,8 +224,10 @@ export default function SketchAndScoreClient() {
     const drawingCanvas = drawingCanvasRef.current;
     if(video && drawingCanvas) {
       const updateSize = () => {
-        drawingCanvas.width = video.videoWidth;
-        drawingCanvas.height = video.videoHeight;
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+            drawingCanvas.width = video.videoWidth;
+            drawingCanvas.height = video.videoHeight;
+        }
       };
       video.addEventListener('loadeddata', updateSize);
       updateSize();
@@ -230,21 +258,21 @@ export default function SketchAndScoreClient() {
     
     // All other states show the camera view
     return (
-        <div className="w-full h-full max-w-7xl max-h-[80vh] aspect-video relative flex justify-center items-center">
+        <div className="w-full h-full max-w-7xl max-h-[80vh] aspect-video relative flex justify-center items-center bg-muted rounded-lg shadow-lg">
             { isHandTrackingLoading || gameState === 'LOADING_CAMERA' ? (
-                <div className="absolute inset-0 bg-background flex flex-col gap-4 items-center justify-center text-foreground z-30">
+                <div className="absolute inset-0 bg-background flex flex-col gap-4 items-center justify-center text-foreground z-50 rounded-lg">
                     <Loader className="h-16 w-16 animate-spin" />
                     <p className="font-headline text-2xl">{isHandTrackingLoading ? "Loading Hand Tracking..." : "Starting Camera..."}</p>
                 </div>
             ) : null }
 
-            <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1] rounded-lg shadow-lg"></video>
-            <canvas ref={handCanvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
-            <canvas ref={drawingCanvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
+            <video ref={videoRef} autoPlay playsInline muted className="absolute top-0 left-0 w-full h-full object-cover scale-x-[-1] rounded-lg z-10"></video>
+            <canvas ref={handCanvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none z-20"></canvas>
+            <canvas ref={drawingCanvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none z-30"></canvas>
 
             {/* Shape to Draw Box */}
             {shapeToDraw && gameState !== 'IDLE' && gameState !== 'FEEDBACK' && (
-              <Card className="absolute top-4 right-4 w-48 h-48 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm">
+              <Card className="absolute top-4 right-4 w-48 h-48 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm z-40">
                 <CardHeader className="p-2 text-center">
                   <CardTitle className="text-md font-headline">Draw This:</CardTitle>
                 </CardHeader>
@@ -256,18 +284,18 @@ export default function SketchAndScoreClient() {
 
             {/* Game State Overlays */}
             {gameState === 'GET_READY' && (
-                <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center rounded-lg text-white">
+                <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center rounded-lg text-white z-40">
                     <h2 className="font-headline text-5xl mb-4">Show 10 Fingers to Start!</h2>
                     <Hand className="h-24 w-24 animate-pulse" />
                 </div>
             )}
              {gameState === 'COUNTDOWN' && (
-                <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-lg">
+                <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-lg z-40">
                     <h2 className="font-headline text-9xl text-white">{countdown}</h2>
                 </div>
             )}
             {gameState === 'DRAWING' && (
-                <div className="absolute bottom-4 flex gap-4">
+                <div className="absolute bottom-4 flex gap-4 z-40">
                   <Button onClick={handleSubmit} size="lg" className="font-headline text-lg" >
                     <Sparkles className="mr-2"/> Submit Drawing
                   </Button>
@@ -278,13 +306,13 @@ export default function SketchAndScoreClient() {
                 </div>
             )}
              {gameState === 'SUBMITTING' && (
-                <div className="absolute inset-0 bg-black/60 flex flex-col gap-4 items-center justify-center rounded-lg text-white">
+                <div className="absolute inset-0 bg-black/60 flex flex-col gap-4 items-center justify-center rounded-lg text-white z-50">
                     <Loader className="h-16 w-16 animate-spin" />
                     <p className="font-headline text-3xl">AI is judging your art...</p>
                 </div>
             )}
              {gameState === 'FEEDBACK' && feedback && (
-                 <div className="absolute inset-0 bg-black/70 flex flex-col gap-4 items-center justify-center rounded-lg text-white">
+                 <div className="absolute inset-0 bg-black/70 flex flex-col gap-4 items-center justify-center rounded-lg text-white z-50">
                     {feedback.isMatch ? <CheckCircle2 className="h-24 w-24 text-green-400" /> : <XCircle className="h-24 w-24 text-red-400" />}
                     <h2 className="font-headline text-4xl max-w-lg text-center">{feedback.message}</h2>
                     <h3 className="text-2xl font-bold">Your Score: {score}</h3>
