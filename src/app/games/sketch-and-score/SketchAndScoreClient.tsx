@@ -71,7 +71,6 @@ export default function SketchAndScoreClient() {
   const startGame = useCallback(async () => {
     setScore(0);
     setGameState('LOADING_CAMERA');
-    // The use-hand-tracking hook will handle the error display
     try {
       await startVideo();
       await fetchNewShape();
@@ -103,7 +102,6 @@ export default function SketchAndScoreClient() {
     if(!drawingCanvasRef.current || !shapeToDraw) return;
     setGameState('SUBMITTING');
 
-    // Create a temporary canvas to draw the final image for the AI
     const tempCanvas = document.createElement('canvas');
     const tempCtx = tempCanvas.getContext('2d');
     const sourceCanvas = drawingCanvasRef.current;
@@ -121,14 +119,10 @@ export default function SketchAndScoreClient() {
     tempCanvas.width = sourceCanvas.width;
     tempCanvas.height = sourceCanvas.height;
 
-    // Fill the background with white
     tempCtx.fillStyle = '#FFFFFF';
     tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-
-    // Draw the user's drawing on top
     tempCtx.drawImage(sourceCanvas, 0, 0);
 
-    // Get the data URI from the temporary canvas
     const drawingDataUri = tempCanvas.toDataURL('image/png');
 
     try {
@@ -164,8 +158,9 @@ export default function SketchAndScoreClient() {
     
     let raisedFingers = 0;
 
-    // Thumb: Simple vertical check
-    if (handLandmarks[tipIds[0]].y < handLandmarks[pipIds[0]].y) {
+    // A simple vertical check is often enough for gestures
+    // Thumb: Check if tip is above MCP joint (more robust for side-on view)
+    if (handLandmarks[tipIds[0]].y < handLandmarks[tipIds[0] - 1].y) {
        raisedFingers++;
     }
 
@@ -187,9 +182,10 @@ export default function SketchAndScoreClient() {
     let rightHandFingers = 0;
     let rightHandLandmarks: typeof landmarks[0] | null = null;
 
-    // Find left and right hands
     for (let i = 0; i < handedness.length; i++) {
       const hand = handedness[i][0];
+      if (!hand) continue;
+      
       const handLandmarks = landmarks[i];
       const fingerCount = countFingersForHand(handLandmarks);
 
@@ -202,7 +198,6 @@ export default function SketchAndScoreClient() {
     }
     const totalFingers = leftHandFingers + rightHandFingers;
     
-    // Handle game state transitions based on gestures
     if (gameState === 'GET_READY' && totalFingers === 10) {
         setCountdown(COUNTDOWN_SECONDS);
         setGameState('COUNTDOWN');
@@ -210,15 +205,13 @@ export default function SketchAndScoreClient() {
     } 
     
     if (gameState === 'DRAWING') {
-      // 10 fingers to clear canvas
       if (totalFingers >= 10) {
           clearCanvas();
           lastPosition.current = null;
           toast({ title: "Canvas Cleared!" });
-          return; // Stop processing other gestures for this frame
+          return;
       }
 
-      // Check secondary (left) hand for tool controls
       if (leftHandFingers === 3) {
         if(drawingTool !== 'ERASER') setDrawingTool('ERASER');
       } else {
@@ -228,18 +221,16 @@ export default function SketchAndScoreClient() {
       const isPaused = leftHandFingers === 5;
       
       if (isPaused) {
-        lastPosition.current = null; // Lift the pencil
+        lastPosition.current = null;
         return;
       }
 
-      // Check primary (right) hand for drawing
       if (rightHandLandmarks && rightHandFingers === 1) {
         const indexTip = rightHandLandmarks[8];
         const ctx = getDrawingContext();
 
         if (drawingCanvasRef.current && indexTip && ctx) {
           const canvas = drawingCanvasRef.current;
-          // IMPORTANT: video is flipped horizontally, so we must flip the x-coordinate
           const x = (1 - indexTip.x) * canvas.width; 
           const y = indexTip.y * canvas.height;
 
@@ -247,7 +238,7 @@ export default function SketchAndScoreClient() {
             ctx.globalCompositeOperation = 'source-over';
             ctx.strokeStyle = 'black';
             ctx.lineWidth = 5;
-          } else { // ERASER
+          } else {
             ctx.globalCompositeOperation = 'destination-out';
             ctx.lineWidth = 25;
           }
@@ -259,14 +250,13 @@ export default function SketchAndScoreClient() {
           if (lastPosition.current) {
             ctx.moveTo(lastPosition.current.x, lastPosition.current.y);
           } else {
-            ctx.moveTo(x, y); // Start drawing from the current point if pen was lifted
+            ctx.moveTo(x, y);
           }
           ctx.lineTo(x, y);
           ctx.stroke();
           lastPosition.current = { x, y };
         } 
       } else {
-          // If not drawing (e.g., right hand doesn't have 1 finger up), lift the pen
           lastPosition.current = null;
       }
     }
@@ -299,7 +289,6 @@ export default function SketchAndScoreClient() {
 
 
   const renderContent = () => {
-    // IDLE is the only state without the camera
     if (gameState === 'IDLE') {
       return (
         <div className="flex items-center justify-center h-full">
@@ -310,7 +299,7 @@ export default function SketchAndScoreClient() {
                     </div>
                     <CardTitle className="font-headline text-4xl">Sketch & Score</CardTitle>
                     <CardDescription className="text-lg text-muted-foreground pt-2">
-                        Draw the shape you see on screen using your index finger. Use gestures to control your tools and submit your masterpiece to the AI judge!
+                        Draw the shape on screen using your index finger. Use gestures to control your tools and submit your masterpiece to the AI judge!
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -321,15 +310,12 @@ export default function SketchAndScoreClient() {
       );
     }
     
-    // All other states show the camera view with overlays
     return (
         <>
-            {/* Video and Canvases are always present after IDLE state */}
             <video ref={videoRef} autoPlay playsInline muted className="absolute top-0 left-0 w-full h-full object-cover scale-x-[-1]"></video>
             <canvas ref={handCanvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
             <canvas ref={drawingCanvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
 
-            {/* Loading Overlay */}
             {(isHandTrackingLoading || gameState === 'LOADING_CAMERA') && (
               <div className="absolute inset-0 bg-black/60 flex flex-col gap-4 items-center justify-center rounded-lg text-white z-30">
                 <Loader className="h-16 w-16 animate-spin" />
@@ -337,8 +323,7 @@ export default function SketchAndScoreClient() {
               </div>
             )}
 
-            {/* Shape to Draw Box */}
-            {shapeToDraw && gameState !== 'IDLE' && gameState !== 'FEEDBACK' && gameState !== 'LOADING_CAMERA' && (
+            {shapeToDraw && !['IDLE', 'FEEDBACK', 'LOADING_CAMERA'].includes(gameState) && (
               <Card className="absolute top-4 right-4 w-48 h-48 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm z-10">
                 <CardHeader className="p-2 text-center">
                   <CardTitle className="text-md font-headline">Draw This:</CardTitle>
@@ -349,7 +334,6 @@ export default function SketchAndScoreClient() {
               </Card>
             )}
 
-            {/* Game State Overlays */}
             {gameState === 'GET_READY' && (
                 <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center rounded-lg text-white z-20">
                     <h2 className="font-headline text-5xl mb-4">Show 10 Fingers to Start!</h2>
@@ -362,7 +346,7 @@ export default function SketchAndScoreClient() {
                 </div>
             )}
             {gameState === 'DRAWING' && (
-                <div className="absolute bottom-4 flex gap-4 z-20">
+                <div className="absolute bottom-4 left-0 right-0 flex justify-center items-center gap-4 z-20">
                   <Button onClick={handleSubmit} size="lg" className="font-headline text-lg" >
                     <Sparkles className="mr-2"/> Submit Drawing
                   </Button>
@@ -393,11 +377,9 @@ export default function SketchAndScoreClient() {
 
   return (
     <div className="container mx-auto px-4 py-8 flex-grow flex flex-col items-center justify-center">
-      <div className="w-full max-w-7xl aspect-video relative rounded-lg shadow-lg overflow-hidden">
+      <div className="w-full max-w-7xl aspect-video relative rounded-lg shadow-lg overflow-hidden bg-muted">
         {renderContent()}
       </div>
     </div>
   );
 }
-
-    
