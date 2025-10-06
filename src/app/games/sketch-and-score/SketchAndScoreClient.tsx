@@ -267,8 +267,8 @@ export default function SketchAndScoreClient() {
 
     // All other states show the camera view
     return (
-        <div className="w-full max-w-7xl aspect-video relative flex justify-center items-center bg-muted rounded-lg shadow-lg">
-            <video ref={videoRef} autoPlay playsInline muted className="absolute top-0 left-0 w-full h-full object-cover scale-x-[-1] rounded-lg"></video>
+        <div className="w-full max-w-7xl aspect-video relative flex justify-center items-center bg-muted rounded-lg shadow-lg overflow-hidden">
+            <video ref={videoRef} autoPlay playsInline muted className="absolute top-0 left-0 w-full h-full object-cover scale-x-[-1]"></video>
             <canvas ref={handCanvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
             <canvas ref={drawingCanvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
 
