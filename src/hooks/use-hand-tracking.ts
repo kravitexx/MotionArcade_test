@@ -71,11 +71,7 @@ export function useHandTracking(): HandTrackingHook {
       canvasCtx.restore();
     }
     
-    // This is a simplified finger count for overall gesture detection.
-    const totalFingerCount = results.landmarks ? results.landmarks.reduce((acc, hand, index) => {
-        const handInfo = results.handedness[index] ? results.handedness[index][0] : undefined;
-        return acc + (handInfo ? countFingers(hand, handInfo as any) : 0);
-    }, 0) : 0;
+    const totalFingerCount = countFingers(results.landmarks, results.handedness);
     
     setDetectedFingers(totalFingerCount);
 
@@ -180,33 +176,4 @@ export function useHandTracking(): HandTrackingHook {
 
 
   return { videoRef, canvasRef, detectedFingers, startVideo, stopVideo, isLoading, error, handedness, landmarks };
-}
-
-
-// A more specific finger counting for drawing logic.
-function countFingers(landmarks: Landmark[], handedness: Handedness): number {
-    let fingerCount = 0;
-
-    // Landmark indices for finger tips
-    const tipIds = [4, 8, 12, 16, 20];
-
-    // Thumb
-    if (handedness.categoryName === 'Right') {
-        if (landmarks[tipIds[0]].x < landmarks[tipIds[0] - 1].x) {
-            fingerCount++;
-        }
-    } else { // Left hand
-        if (landmarks[tipIds[0]].x > landmarks[tipIds[0] - 1].x) {
-            fingerCount++;
-        }
-    }
-
-    // Other 4 fingers
-    for (let i = 1; i < 5; i++) {
-        if (landmarks[tipIds[i]].y < landmarks[tipIds[i] - 2].y) {
-            fingerCount++;
-        }
-    }
-
-    return fingerCount;
 }
