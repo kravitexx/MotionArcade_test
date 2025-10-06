@@ -9,11 +9,11 @@ type HandTrackingHook = {
   videoRef: React.RefObject<HTMLVideoElement>;
   canvasRef: React.RefObject<HTMLCanvasElement>;
   detectedFingers: number;
-  startVideo: () => void;
+  startVideo: () => Promise<void>;
   stopVideo: () => void;
   isLoading: boolean;
   error: string | null;
-  handedness: Handedness[];
+  handedness: Handedness[][];
   landmarks: Landmark[][];
 };
 
@@ -30,45 +30,60 @@ export function useHandTracking(): HandTrackingHook {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [detectedFingers, setDetectedFingers] = useState(0);
-  const [handedness, setHandedness] = useState<Handedness[]>([]);
+  const [handedness, setHandedness] = useState<Handedness[][]>([]);
   const [landmarks, setLandmarks] = useState<Landmark[][]>([]);
 
-  useEffect(() => {
-    async function initialize() {
-      try {
-        const vision = await FilesetResolver.forVisionTasks(
-          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
-        );
-        const handLandmarker = await HandLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
-            delegate: isMobile ? 'CPU' : 'GPU',
-          },
-          runningMode: 'VIDEO',
-          numHands: 2,
-          minHandDetectionConfidence: 0.7,
-        });
-        handLandmarkerRef.current = handLandmarker;
-
-        if (canvasRef.current) {
-          const canvasCtx = canvasRef.current.getContext('2d');
-          if (canvasCtx) {
-            drawingUtilsRef.current = new DrawingUtils(canvasCtx);
-          }
-        }
-        setIsLoading(false);
-      } catch (e: any) {
-        setError(`Failed to initialize hand tracking model: ${e.message}`);
-        setIsLoading(false);
-      }
+  const predictWebcam = useCallback(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || !handLandmarkerRef.current || !video.srcObject || video.readyState < 2) {
+        requestRef.current = requestAnimationFrame(predictWebcam);
+        return;
     }
-    initialize();
+    
+    if (video.videoWidth > 0 && (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight)) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+    }
 
-    return () => {
-      stopVideo();
-      handLandmarkerRef.current?.close();
-    };
-  }, [isMobile]);
+    const startTimeMs = performance.now();
+    const results = handLandmarkerRef.current.detectForVideo(video, startTimeMs);
+
+    const canvasCtx = canvas.getContext('2d');
+    if (canvasCtx && drawingUtilsRef.current) {
+      canvasCtx.save();
+      canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      if (results.landmarks) {
+        for (let i = 0; i < results.landmarks.length; i++) {
+          const landmark = results.landmarks[i];
+          const isRightHand = results.handedness[i] && results.handedness[i][0].categoryName === 'Right';
+          const connectorsColor = isRightHand ? 'rgba(230, 230, 250, 0.9)' : 'rgba(216, 191, 216, 0.7)';
+          const landmarksColor = isRightHand ? 'rgba(216, 191, 216, 0.9)' : 'rgba(230, 230, 250, 0.9)';
+
+          drawingUtilsRef.current.drawConnectors(landmark, HandLandmarker.HAND_CONNECTIONS, {
+            color: connectorsColor,
+            lineWidth: 2,
+          });
+          drawingUtilsRef.current.drawLandmarks(landmark, { color: landmarksColor, lineWidth: 1, radius: 2 });
+        }
+      }
+      canvasCtx.restore();
+    }
+    
+    // This is a simplified finger count for overall gesture detection.
+    const totalFingerCount = results.landmarks ? results.landmarks.reduce((acc, hand, index) => {
+        const handInfo = results.handedness[index] ? results.handedness[index][0] : undefined;
+        return acc + (handInfo ? countFingers(hand, handInfo as any) : 0);
+    }, 0) : 0;
+    
+    setDetectedFingers(totalFingerCount);
+
+    setHandedness(results.handedness || []);
+    setLandmarks(results.landmarks || []);
+
+    requestRef.current = requestAnimationFrame(predictWebcam);
+  }, []);
 
   const stopVideo = useCallback(() => {
     if (requestRef.current) {
@@ -82,124 +97,116 @@ export function useHandTracking(): HandTrackingHook {
         videoRef.current.removeEventListener('loadeddata', predictWebcam);
       }
     }
-  }, []);
+  }, [predictWebcam]);
 
-  const startVideo = useCallback(async () => {
-    if (isLoading) return;
-    if (videoRef.current && videoRef.current.srcObject) return; // Already running
-
-    setError(null);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          width: { ideal: isMobile ? 320 : 640 }, 
-          height: { ideal: isMobile ? 240 : 480 },
-          facingMode: "user" 
-        },
-        audio: false,
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.addEventListener('loadeddata', predictWebcam);
-      }
-    } catch (err: any) {
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setError('Camera permission denied. Please allow camera access to play.');
-      } else {
-        setError(`Could not access camera: ${err.message}`);
-      }
-    }
-  }, [isLoading, isMobile]);
-
-  const predictWebcam = useCallback(() => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas || !handLandmarkerRef.current || !video.srcObject) return;
-    
-    if (video.videoWidth === 0) { // Wait for video to be ready
-        requestRef.current = requestAnimationFrame(predictWebcam);
-        return;
-    }
-
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-
-    const startTimeMs = performance.now();
-    const results = handLandmarkerRef.current.detectForVideo(video, startTimeMs);
-
-    const canvasCtx = canvas.getContext('2d');
-    if (canvasCtx && drawingUtilsRef.current) {
-      canvasCtx.save();
-      canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
-      // Flip the canvas horizontally to match the mirrored video
-      canvasCtx.scale(-1, 1);
-      canvasCtx.translate(-canvas.width, 0);
-
-      if (results.landmarks) {
-        for (const landmark of results.landmarks) {
-          drawingUtilsRef.current.drawConnectors(landmark, HandLandmarker.HAND_CONNECTIONS, {
-            color: 'rgba(216, 191, 216, 0.7)',
-            lineWidth: 2,
-          });
-          drawingUtilsRef.current.drawLandmarks(landmark, { color: 'rgba(230, 230, 250, 0.9)', lineWidth: 1, radius: 2 });
+  const startVideo = useCallback(async (): Promise<void> => {
+    return new Promise(async (resolve, reject) => {
+        if (isLoading || (videoRef.current && videoRef.current.srcObject)) {
+            resolve();
+            return;
         }
-      }
-      canvasCtx.restore();
-    }
     
-    const fingerCount = results.landmarks ? countFingers(results.landmarks, results.handedness) : 0;
-    
-    setDetectedFingers(prevFingers => {
-      if(prevFingers !== fingerCount) {
-        return fingerCount;
-      }
-      return prevFingers;
+        setError(null);
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { 
+              width: { ideal: isMobile ? 640 : 1280 }, 
+              height: { ideal: isMobile ? 480 : 720 },
+              facingMode: "user" 
+            },
+            audio: false,
+          });
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+            const videoReady = () => {
+                predictWebcam();
+                videoRef.current?.removeEventListener('loadeddata', videoReady);
+                resolve();
+            }
+            videoRef.current.addEventListener('loadeddata', videoReady);
+          } else {
+            reject(new Error("Video ref not available"));
+          }
+        } catch (err: any) {
+          if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+            setError('Camera permission denied. Please allow camera access to play.');
+          } else {
+            setError(`Could not access camera: ${err.message}`);
+          }
+          reject(err);
+        }
     });
-
-    setHandedness(results.handedness || []);
-    setLandmarks(results.landmarks || []);
+  }, [isLoading, isMobile, predictWebcam]);
 
 
-    if (canvasCtx && results.landmarks.length > 0) {
-        const topOfHand = results.landmarks[0].reduce((min, lm) => (lm.y < min.y ? lm : min), results.landmarks[0][0]);
-        // We use the raw x coordinate and flip it manually for the text position
-        const x = (1 - topOfHand.x) * canvas.width;
-        const y = topOfHand.y * canvas.height;
+  useEffect(() => {
+    async function initialize() {
+      try {
+        setIsLoading(true);
+        const vision = await FilesetResolver.forVisionTasks(
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+        );
+        const handLandmarker = await HandLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
+            delegate: 'GPU',
+          },
+          runningMode: 'VIDEO',
+          numHands: 2,
+          minHandDetectionConfidence: 0.6,
+          minHandTrackingConfidence: 0.6,
+        });
+        handLandmarkerRef.current = handLandmarker;
 
-        canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        canvasCtx.font = 'bold 24px "Space Grotesk", sans-serif';
-        canvasCtx.textAlign = 'center';
-
-        const text = `Fingers: ${fingerCount}`;
-        const textMetrics = canvasCtx.measureText(text);
-        const textWidth = textMetrics.width;
-        const textHeight = 24;
-        
-        canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-        const rectX = x - textWidth / 2 - 10;
-        const rectY = y - textHeight - 20;
-        const rectW = textWidth + 20;
-        const rectH = textHeight + 15;
-        canvasCtx.beginPath();
-        canvasCtx.moveTo(rectX + 8, rectY);
-        canvasCtx.lineTo(rectX + rectW - 8, rectY);
-        canvasCtx.quadraticCurveTo(rectX + rectW, rectY, rectX + rectW, rectY + 8);
-        canvasCtx.lineTo(rectX + rectW, rectY + rectH - 8);
-        canvasCtx.quadraticCurveTo(rectX + rectW, rectY + rectH, rectX + rectW - 8, rectY + rectH);
-        canvasCtx.lineTo(rectX + 8, rectY + rectH);
-        canvasCtx.quadraticCurveTo(rectX, rectY + rectH, rectX, rectY + rectH - 8);
-        canvasCtx.lineTo(rectX, rectY + 8);
-        canvasCtx.quadraticCurveTo(rectX, rectY, rectX + 8, rectY);
-        canvasCtx.closePath();
-        canvasCtx.fill();
-        
-        canvasCtx.fillStyle = 'white';
-        canvasCtx.fillText(text, x, y - 10);
+        if (canvasRef.current) {
+          const canvasCtx = canvasRef.current.getContext('2d');
+          if (canvasCtx) {
+            drawingUtilsRef.current = new DrawingUtils(canvasCtx);
+          }
+        }
+      } catch (e: any) {
+        setError(`Failed to initialize hand tracking model: ${e.message}`);
+      } finally {
+        setIsLoading(false);
+      }
     }
+    initialize();
 
+    return () => {
+      stopVideo();
+      handLandmarkerRef.current?.close();
+    };
+  }, [stopVideo]);
 
-    requestRef.current = requestAnimationFrame(predictWebcam);
-  }, []);
 
   return { videoRef, canvasRef, detectedFingers, startVideo, stopVideo, isLoading, error, handedness, landmarks };
+}
+
+
+// A more specific finger counting for drawing logic.
+function countFingers(landmarks: Landmark[], handedness: Handedness): number {
+    let fingerCount = 0;
+
+    // Landmark indices for finger tips
+    const tipIds = [4, 8, 12, 16, 20];
+
+    // Thumb
+    if (handedness.categoryName === 'Right') {
+        if (landmarks[tipIds[0]].x < landmarks[tipIds[0] - 1].x) {
+            fingerCount++;
+        }
+    } else { // Left hand
+        if (landmarks[tipIds[0]].x > landmarks[tipIds[0] - 1].x) {
+            fingerCount++;
+        }
+    }
+
+    // Other 4 fingers
+    for (let i = 1; i < 5; i++) {
+        if (landmarks[tipIds[i]].y < landmarks[tipIds[i] - 2].y) {
+            fingerCount++;
+        }
+    }
+
+    return fingerCount;
 }

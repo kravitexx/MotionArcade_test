@@ -40,13 +40,14 @@ export default function SketchAndScoreClient() {
   const [drawingTool, setDrawingTool] = useState<DrawingTool>('PENCIL');
   const [feedback, setFeedback] = useState<{isMatch: boolean, message: string} | null>(null);
 
-  const getDrawingContext = () => drawingCanvasRef.current?.getContext('2d');
+  const getDrawingContext = useCallback(() => drawingCanvasRef.current?.getContext('2d'), []);
 
   const fetchNewShape = useCallback(async () => {
-    setGameState('LOADING_CAMERA');
+    setGameState('LOADING_CAMERA'); // This will be quickly overridden but sets a loading state
     try {
       const { shape } = await generateShapeToDraw();
       setShapeToDraw(shape);
+      setGameState('GET_READY');
     } catch (error) {
       toast({
         variant: 'destructive',
@@ -59,9 +60,9 @@ export default function SketchAndScoreClient() {
   
   const startGame = useCallback(async () => {
     setScore(0);
+    setGameState('LOADING_CAMERA');
     await startVideo();
     await fetchNewShape();
-    setGameState('GET_READY');
   }, [startVideo, fetchNewShape]);
 
   // Countdown logic
@@ -80,7 +81,7 @@ export default function SketchAndScoreClient() {
     if(ctx && drawingCanvasRef.current) {
         ctx.clearRect(0, 0, drawingCanvasRef.current.width, drawingCanvasRef.current.height);
     }
-  }, []);
+  }, [getDrawingContext]);
 
   const handleSubmit = async () => {
     if(!drawingCanvasRef.current || !shapeToDraw) return;
@@ -110,35 +111,52 @@ export default function SketchAndScoreClient() {
     clearCanvas();
     lastPosition.current = null;
     fetchNewShape();
-    setGameState('GET_READY');
   }
 
   // Main gesture detection logic
   useEffect(() => {
-    if (!landmarks.length || !handedness.length) return;
+    if (!landmarks.length || !handedness.length || isHandTrackingLoading) return;
 
-    // Separate hands based on handedness
-    const leftHand = handedness[0]?.categoryName === 'Left' ? { landmarks: landmarks[0], fingers: countFingersForHand(landmarks[0]) } : handedness[1]?.categoryName === 'Left' ? { landmarks: landmarks[1], fingers: countFingersForHand(landmarks[1]) } : null;
-    const rightHand = handedness[0]?.categoryName === 'Right' ? { landmarks: landmarks[0], fingers: countFingersForHand(landmarks[0]) } : handedness[1]?.categoryName === 'Right' ? { landmarks: landmarks[1], fingers: countFingersForHand(landmarks[1]) } : null;
+    // Use a more robust way to count fingers for multiple hands
+    let leftHandFingers = 0;
+    let rightHandFingers = 0;
+    let primaryHandLandmarks: typeof landmarks[0] | null = null;
 
-    const primaryHand = rightHand; // Assume right-handed for now
-    const secondaryHand = leftHand;
+    for (let i = 0; i < handedness.length; i++) {
+        const hand = handedness[i][0];
+        const handLandmarks = landmarks[i];
+        const fingerCount = countFingersForHand(handLandmarks, hand.categoryName as "Left" | "Right");
+        if (hand.categoryName === 'Left') {
+            leftHandFingers = fingerCount;
+        } else if (hand.categoryName === 'Right') {
+            rightHandFingers = fingerCount;
+            primaryHandLandmarks = handLandmarks;
+        }
+    }
+    // Default to first hand if right hand isn't detected
+    if (!primaryHandLandmarks && landmarks.length > 0) {
+        primaryHandLandmarks = landmarks[0];
+    }
+
+    const secondaryHandFingers = leftHandFingers;
+    const totalFingers = leftHandFingers + rightHandFingers;
+    
 
     // Handle game state transitions based on gestures
-    if (gameState === 'GET_READY' && detectedFingers === 10) {
+    if (gameState === 'GET_READY' && totalFingers === 10) {
         setCountdown(COUNTDOWN_SECONDS);
         setGameState('COUNTDOWN');
     } else if (gameState === 'DRAWING') {
-      if (detectedFingers === 10) { // Reset
+      if (totalFingers === 10) { // Reset
           clearCanvas();
           lastPosition.current = null;
           toast({ title: "Canvas Cleared!" });
           return;
       }
       
-      const isPaused = secondaryHand && secondaryHand.fingers === 5;
+      const isPaused = secondaryHandFingers === 5;
       
-      if(secondaryHand && secondaryHand.fingers === 3) {
+      if(secondaryHandFingers === 3) {
         if(drawingTool !== 'ERASER') setDrawingTool('ERASER');
       } else {
         if(drawingTool !== 'PENCIL') setDrawingTool('PENCIL');
@@ -149,70 +167,64 @@ export default function SketchAndScoreClient() {
         return;
       }
 
-      if (primaryHand && primaryHand.landmarks) {
-        const indexTip = primaryHand.landmarks[8];
-        if (drawingCanvasRef.current && indexTip) {
+      if (primaryHandLandmarks) {
+        const indexTip = primaryHandLandmarks[8];
+        const ctx = getDrawingContext();
+        if (drawingCanvasRef.current && indexTip && ctx) {
           const canvas = drawingCanvasRef.current;
-          const rect = canvas.getBoundingClientRect();
           const x = (1 - indexTip.x) * canvas.width;
           const y = indexTip.y * canvas.height;
 
-          const ctx = getDrawingContext();
-          if (ctx) {
-             if (drawingTool === 'PENCIL') {
-              ctx.globalCompositeOperation = 'source-over';
-              ctx.strokeStyle = 'black';
-              ctx.lineWidth = 5;
-            } else { // ERASER
-              ctx.globalCompositeOperation = 'destination-out';
-              ctx.lineWidth = 20;
-            }
-
-            ctx.beginPath();
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-
-            if (lastPosition.current) {
-              ctx.moveTo(lastPosition.current.x, lastPosition.current.y);
-            }
-            ctx.lineTo(x, y);
-            ctx.stroke();
-            lastPosition.current = { x, y };
+           if (drawingTool === 'PENCIL') {
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 5;
+          } else { // ERASER
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.lineWidth = 20;
           }
+
+          ctx.beginPath();
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+
+          if (lastPosition.current) {
+            ctx.moveTo(lastPosition.current.x, lastPosition.current.y);
+          }
+          ctx.lineTo(x, y);
+          ctx.stroke();
+          lastPosition.current = { x, y };
+        } else {
+            lastPosition.current = null;
         }
       } else {
         lastPosition.current = null;
       }
     }
-  }, [landmarks, detectedFingers, handedness, gameState, drawingTool, clearCanvas, toast]);
+  }, [landmarks, handedness, gameState, drawingTool, clearCanvas, toast, getDrawingContext, isHandTrackingLoading]);
 
   // Helper to count fingers for a single hand
-  const countFingersForHand = (handLandmarks: any[]): number => {
+  const countFingersForHand = (handLandmarks: any[], handednessName: 'Left' | 'Right'): number => {
     if (!handLandmarks) return 0;
-    // This is a simplified finger counting logic. A more robust one might be needed.
-    const thumbTip = handLandmarks[4];
-    const indexTip = handLandmarks[8];
-    const middleTip = handLandmarks[12];
-    const ringTip = handLandmarks[16];
-    const pinkyTip = handLandmarks[20];
     
-    const indexMcp = handLandmarks[5];
-    const middleMcp = handLandmarks[9];
-    const ringMcp = handLandmarks[13];
-    const pinkyMcp = handLandmarks[17];
+    const fingerTips = [handLandmarks[8], handLandmarks[12], handLandmarks[16], handLandmarks[20]];
+    const fingerMcps = [handLandmarks[5], handLandmarks[9], handLandmarks[13], handLandmarks[17]];
     
     let raisedFingers = 0;
-    if (indexTip.y < indexMcp.y) raisedFingers++;
-    if (middleTip.y < middleMcp.y) raisedFingers++;
-    if (ringTip.y < ringMcp.y) raisedFingers++;
-    if (pinkyTip.y < pinkyMcp.y) raisedFingers++;
+    // Check index, middle, ring, pinky
+    for(let i=0; i<fingerTips.length; i++) {
+        if (fingerTips[i].y < fingerMcps[i].y) {
+            raisedFingers++;
+        }
+    }
     
-    // A simple thumb check, might need refinement
-    const handednessName = handedness.find(h => h.displayName)?.categoryName || 'Right';
+    // Thumb check
+    const thumbTip = handLandmarks[4];
+    const indexMcp = handLandmarks[5];
     if (handednessName === 'Right') {
-      if (thumbTip.x < handLandmarks[2].x) raisedFingers++;
-    } else {
-      if (thumbTip.x > handLandmarks[2].x) raisedFingers++;
+      if (thumbTip.x < indexMcp.x) raisedFingers++;
+    } else { // Left hand
+      if (thumbTip.x > indexMcp.x) raisedFingers++;
     }
 
     return raisedFingers;
@@ -224,41 +236,50 @@ export default function SketchAndScoreClient() {
     const drawingCanvas = drawingCanvasRef.current;
     if(video && drawingCanvas) {
       const updateSize = () => {
-        if (video.videoWidth > 0 && video.videoHeight > 0) {
-            drawingCanvas.width = video.videoWidth;
-            drawingCanvas.height = video.videoHeight;
+        const { videoWidth, videoHeight } = video;
+        if (videoWidth > 0 && videoHeight > 0) {
+            if(drawingCanvas.width !== videoWidth || drawingCanvas.height !== videoHeight) {
+                drawingCanvas.width = videoWidth;
+                drawingCanvas.height = videoHeight;
+            }
         }
       };
+      
+      if(video.readyState >= 2) { // HAVE_CURRENT_DATA
+        updateSize();
+      }
+
       video.addEventListener('loadeddata', updateSize);
-      updateSize();
       return () => video.removeEventListener('loadeddata', updateSize);
     }
   }, [videoRef, drawingCanvasRef, gameState]);
 
 
-  const renderGameState = () => {
+  const renderContent = () => {
     if (gameState === 'IDLE') {
       return (
-        <Card className="max-w-xl text-center p-8">
-            <CardHeader>
-                <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 text-primary">
-                    <Pencil className="h-10 w-10" />
-                </div>
-                <CardTitle className="font-headline text-4xl">Sketch & Score</CardTitle>
-                <CardDescription className="text-lg text-muted-foreground pt-2">
-                    Draw the shape you see on screen using your index finger. Use gestures to control your tools and submit your masterpiece to the AI judge!
-                </CardDescription>
-            </CardHeader>
-            <CardContent>
-                <Button onClick={startGame} size="lg" className="font-headline text-xl">Start Drawing</Button>
-            </CardContent>
-        </Card>
+        <div className="flex items-center justify-center h-full">
+            <Card className="max-w-xl text-center p-8">
+                <CardHeader>
+                    <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 text-primary">
+                        <Pencil className="h-10 w-10" />
+                    </div>
+                    <CardTitle className="font-headline text-4xl">Sketch & Score</CardTitle>
+                    <CardDescription className="text-lg text-muted-foreground pt-2">
+                        Draw the shape you see on screen using your index finger. Use gestures to control your tools and submit your masterpiece to the AI judge!
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <Button onClick={startGame} size="lg" className="font-headline text-xl">Start Drawing</Button>
+                </CardContent>
+            </Card>
+        </div>
       );
     }
     
     if (isHandTrackingLoading || gameState === 'LOADING_CAMERA') {
       return (
-        <div className="flex flex-col gap-4 items-center justify-center text-foreground">
+        <div className="flex flex-col gap-4 items-center justify-center text-foreground h-full">
           <Loader className="h-16 w-16 animate-spin" />
           <p className="font-headline text-2xl">{isHandTrackingLoading ? "Loading Hand Tracking..." : "Starting Camera..."}</p>
         </div>
@@ -267,7 +288,7 @@ export default function SketchAndScoreClient() {
 
     // All other states show the camera view
     return (
-        <div className="w-full max-w-7xl aspect-video relative flex justify-center items-center bg-muted rounded-lg shadow-lg overflow-hidden">
+        <div className="w-full h-full relative flex justify-center items-center">
             <video ref={videoRef} autoPlay playsInline muted className="absolute top-0 left-0 w-full h-full object-cover scale-x-[-1]"></video>
             <canvas ref={handCanvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
             <canvas ref={drawingCanvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
@@ -327,32 +348,10 @@ export default function SketchAndScoreClient() {
 
 
   return (
-    <div className="container mx-auto px-4 py-8 flex flex-col items-center justify-center min-h-[calc(100vh-56px)]">
-      {renderGameState()}
+    <div className="container mx-auto px-4 py-8 flex-grow flex flex-col items-center justify-center">
+      <div className="w-full max-w-7xl aspect-video relative bg-muted rounded-lg shadow-lg overflow-hidden">
+        {renderContent()}
+      </div>
     </div>
   );
-}
-
-// Minimal finger counting logic needed for this game's gestures
-function countFingers(landmarks: any[][], handedness: any[]): number {
-  if (!landmarks || landmarks.length === 0) {
-    return 0;
-  }
-  let totalFingers = 0;
-  for (let i = 0; i < landmarks.length; i++) {
-    const handLandmarks = landmarks[i];
-    let raisedFingers = 0;
-    const isThumbUp = handLandmarks[4].y < handLandmarks[3].y && handLandmarks[3].y < handLandmarks[2].y;
-    const isIndexUp = handLandmarks[8].y < handLandmarks[6].y;
-    const isMiddleUp = handLandmarks[12].y < handLandmarks[10].y;
-    const isRingUp = handLandmarks[16].y < handLandmarks[14].y;
-    const isPinkyUp = handLandmarks[20].y < handLandmarks[18].y;
-    if (isThumbUp) raisedFingers++;
-    if (isIndexUp) raisedFingers++;
-    if (isMiddleUp) raisedFingers++;
-    if (isRingUp) raisedFingers++;
-    if (isPinkyUp) raisedFingers++;
-    totalFingers += raisedFingers;
-  }
-  return totalFingers;
 }
