@@ -119,10 +119,14 @@ export default function SketchAndScoreClient() {
     tempCanvas.width = sourceCanvas.width;
     tempCanvas.height = sourceCanvas.height;
 
+    // Fill with a white background
     tempCtx.fillStyle = '#FFFFFF';
     tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+    
+    // Draw the user's drawing on top
     tempCtx.drawImage(sourceCanvas, 0, 0);
 
+    // Get the data URI from the temporary canvas
     const drawingDataUri = tempCanvas.toDataURL('image/png');
 
     try {
@@ -173,6 +177,23 @@ export default function SketchAndScoreClient() {
 
     return raisedFingers;
   };
+  
+  const isPointing = (handLandmarks: any[]): boolean => {
+      if (!handLandmarks || handLandmarks.length < 21) return false;
+
+      const tipIds = { index: 8, middle: 12, ring: 16, pinky: 20 };
+      const pipIds = { index: 6, middle: 10, ring: 14, pinky: 18 };
+
+      // Check if index finger is extended (tip is above pip)
+      const indexFingerExtended = handLandmarks[tipIds.index].y < handLandmarks[pipIds.index].y;
+
+      // Check if other fingers (middle, ring, pinky) are curled (tip is below pip)
+      const middleFingerCurled = handLandmarks[tipIds.middle].y > handLandmarks[pipIds.middle].y;
+      const ringFingerCurled = handLandmarks[tipIds.ring].y > handLandmarks[pipIds.ring].y;
+      const pinkyFingerCurled = handLandmarks[tipIds.pinky].y > handLandmarks[pipIds.pinky].y;
+
+      return indexFingerExtended && middleFingerCurled && ringFingerCurled && pinkyFingerCurled;
+  };
 
   // Main gesture detection logic
   useEffect(() => {
@@ -182,6 +203,7 @@ export default function SketchAndScoreClient() {
     let rightHandFingers = 0;
     let rightHandLandmarks: typeof landmarks[0] | null = null;
 
+    // Assign landmarks and finger counts to the correct hands
     for (let i = 0; i < handedness.length; i++) {
       const hand = handedness[i][0];
       if (!hand) continue;
@@ -212,20 +234,22 @@ export default function SketchAndScoreClient() {
           return;
       }
 
+      // Gesture for tool switching
       if (leftHandFingers === 3) {
         if(drawingTool !== 'ERASER') setDrawingTool('ERASER');
       } else {
         if(drawingTool !== 'PENCIL') setDrawingTool('PENCIL');
       }
       
+      // Gesture for pausing
       const isPaused = leftHandFingers === 5;
-      
       if (isPaused) {
         lastPosition.current = null;
-        return;
+        return; // Don't draw if paused
       }
 
-      if (rightHandLandmarks && rightHandFingers === 1) {
+      // Drawing logic
+      if (rightHandLandmarks && isPointing(rightHandLandmarks)) {
         const indexTip = rightHandLandmarks[8];
         const ctx = getDrawingContext();
 
@@ -238,7 +262,7 @@ export default function SketchAndScoreClient() {
             ctx.globalCompositeOperation = 'source-over';
             ctx.strokeStyle = 'black';
             ctx.lineWidth = 5;
-          } else {
+          } else { // ERASER
             ctx.globalCompositeOperation = 'destination-out';
             ctx.lineWidth = 25;
           }
@@ -250,6 +274,7 @@ export default function SketchAndScoreClient() {
           if (lastPosition.current) {
             ctx.moveTo(lastPosition.current.x, lastPosition.current.y);
           } else {
+            // This is the first point, move to it without drawing a line
             ctx.moveTo(x, y);
           }
           ctx.lineTo(x, y);
@@ -257,6 +282,7 @@ export default function SketchAndScoreClient() {
           lastPosition.current = { x, y };
         } 
       } else {
+          // If not pointing, lift the "pencil"
           lastPosition.current = null;
       }
     }
@@ -267,24 +293,28 @@ export default function SketchAndScoreClient() {
   useEffect(() => {
     const video = videoRef.current;
     const drawingCanvas = drawingCanvasRef.current;
-    if(video && drawingCanvas) {
-      const updateSize = () => {
+    if (!video || !drawingCanvas) return;
+
+    const updateSize = () => {
         const { videoWidth, videoHeight } = video;
         if (videoWidth > 0 && videoHeight > 0) {
-            if(drawingCanvas.width !== videoWidth || drawingCanvas.height !== videoHeight) {
+            if (drawingCanvas.width !== videoWidth || drawingCanvas.height !== videoHeight) {
                 drawingCanvas.width = videoWidth;
                 drawingCanvas.height = videoHeight;
             }
         }
-      };
-      
-      if(video.readyState >= 2) { // HAVE_CURRENT_DATA
-        updateSize();
-      }
+    };
 
-      video.addEventListener('loadeddata', updateSize);
-      return () => video.removeEventListener('loadeddata', updateSize);
+    // Check if video is ready, otherwise wait for the loadeddata event
+    if (video.readyState >= 2) { // HAVE_CURRENT_DATA
+        updateSize();
+    } else {
+        video.addEventListener('loadeddata', updateSize, { once: true });
     }
+    
+    return () => {
+        video.removeEventListener('loadeddata', updateSize);
+    };
   }, [videoRef, drawingCanvasRef, gameState]);
 
 
@@ -312,6 +342,7 @@ export default function SketchAndScoreClient() {
     
     return (
         <>
+            {/* These elements are now always rendered after IDLE state */}
             <video ref={videoRef} autoPlay playsInline muted className="absolute top-0 left-0 w-full h-full object-cover scale-x-[-1]"></video>
             <canvas ref={handCanvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
             <canvas ref={drawingCanvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
