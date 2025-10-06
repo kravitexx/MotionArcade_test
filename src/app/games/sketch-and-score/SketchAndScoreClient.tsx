@@ -29,6 +29,7 @@ export default function SketchAndScoreClient() {
   const { videoRef, canvasRef: handCanvasRef, landmarks, handedness, startVideo, stopVideo, isLoading: isHandTrackingLoading, error: handTrackingError } = useHandTracking();
   const drawingCanvasRef = useRef<HTMLCanvasElement>(null);
   const lastPosition = useRef<{ x: number, y: number } | null>(null);
+  const lastSecondaryFingers = useRef<number>(0);
   
   const { toast } = useToast();
 
@@ -162,11 +163,15 @@ export default function SketchAndScoreClient() {
     
     let raisedFingers = 0;
 
-    // A simple vertical check is often enough for gestures
-    // Thumb: Check if tip is above MCP joint (more robust for side-on view)
-    if (handLandmarks[tipIds[0]].y < handLandmarks[tipIds[0] - 1].y) {
-       raisedFingers++;
+    // Thumb: Check if tip is "above" the MCP joint relative to the palm
+    // A simple x-check can be more stable for thumb than y-check
+    const hand = handedness.find(h => h[0].categoryName === 'Right') ? 'Right' : 'Left';
+    if(hand === 'Right'){
+      if (handLandmarks[tipIds[0]].x < handLandmarks[tipIds[0] - 1].x) raisedFingers++;
+    } else {
+      if (handLandmarks[tipIds[0]].x > handLandmarks[tipIds[0] - 1].x) raisedFingers++;
     }
+
 
     // Fingers: Check if tip is above the PIP joint
     for (let i = 1; i < 5; i++) {
@@ -197,12 +202,15 @@ export default function SketchAndScoreClient() {
 
   // Main gesture detection logic
   useEffect(() => {
-    if (!landmarks.length || isHandTrackingLoading || gameState === 'SUBMITTING' || gameState === 'FEEDBACK') return;
+    if (!landmarks.length || isHandTrackingLoading || gameState === 'SUBMITTING' || gameState === 'FEEDBACK') {
+        if (landmarks.length === 0) {
+            // Reset last finger count if no hands are detected
+            lastSecondaryFingers.current = 0;
+        }
+        return;
+    };
 
-    let totalFingers = 0;
-    landmarks.forEach(hand => {
-        totalFingers += countFingersForHand(hand);
-    });
+    let totalFingers = landmarks.reduce((acc, hand) => acc + countFingersForHand(hand), 0);
 
     if (gameState === 'GET_READY' && totalFingers === 10) {
         setCountdown(COUNTDOWN_SECONDS);
@@ -217,46 +225,48 @@ export default function SketchAndScoreClient() {
             toast({ title: "Canvas Cleared!" });
             return;
         }
+        
+        let primaryHand: any[] | null = null;
+        let secondaryHand: any[] | null = null;
+        
+        const pointingHandIndex = landmarks.findIndex(isPointing);
 
-        let primaryHand = null;
-        let secondaryHand = null;
-
-        // Find the primary hand (the one pointing)
-        if (landmarks[0] && isPointing(landmarks[0])) {
-            primaryHand = landmarks[0];
-            secondaryHand = landmarks[1];
-        } else if (landmarks[1] && isPointing(landmarks[1])) {
-            primaryHand = landmarks[1];
-            secondaryHand = landmarks[0];
+        if (pointingHandIndex !== -1) {
+            primaryHand = landmarks[pointingHandIndex];
+            secondaryHand = landmarks[1 - pointingHandIndex]; // The other hand
+        } else {
+            // No hand is pointing, reset drawing position and gesture memory
+            lastPosition.current = null;
+            lastSecondaryFingers.current = 0; 
+            return;
         }
 
-        let isPaused = false;
-        let useEraser = false;
-
-        if (secondaryHand) {
-            const secondaryFingers = countFingersForHand(secondaryHand);
-            if (secondaryFingers === 5) {
-                isPaused = true;
-            } else if (secondaryFingers === 3) {
-                useEraser = true;
+        // Process gestures from the secondary hand
+        const secondaryFingers = secondaryHand ? countFingersForHand(secondaryHand) : 0;
+        
+        // Only process gesture if the finger count has changed to prevent flickering
+        if (secondaryFingers !== lastSecondaryFingers.current) {
+             if (secondaryFingers === 5) {
+                if(drawingTool !== 'ERASER') {
+                  setDrawingTool('ERASER');
+                  toast({title: "Eraser activated!"});
+                }
+            } else if (secondaryFingers === 4) {
+                 if(drawingTool !== 'PENCIL') {
+                  setDrawingTool('PENCIL');
+                  toast({title: "Pencil activated!"});
+                }
             }
         }
-        
-        // Set tool based on gesture
-        if (useEraser) {
-            if (drawingTool !== 'ERASER') setDrawingTool('ERASER');
-        } else {
-            if (drawingTool !== 'PENCIL') setDrawingTool('PENCIL');
-        }
+        lastSecondaryFingers.current = secondaryFingers;
 
-        // Handle drawing
-        if (primaryHand && !isPaused) {
+        // Handle drawing with primary hand
+        if (primaryHand) {
             const indexTip = primaryHand[8];
             const ctx = getDrawingContext();
             
             if (drawingCanvasRef.current && indexTip && ctx) {
                 const canvas = drawingCanvasRef.current;
-                // Flip the X coordinate because the video is mirrored
                 const x = (1 - indexTip.x) * canvas.width;
                 const y = indexTip.y * canvas.height;
 
@@ -283,7 +293,6 @@ export default function SketchAndScoreClient() {
                 lastPosition.current = { x, y };
             }
         } else {
-            // Lift the "pencil" if not pointing or if paused
             lastPosition.current = null;
         }
     }
@@ -305,7 +314,7 @@ export default function SketchAndScoreClient() {
             }
         }
     };
-
+    
     // Check if video is ready, otherwise wait for the loadeddata event
     if (video.readyState >= 2) { // HAVE_CURRENT_DATA
         updateSize();
@@ -314,7 +323,9 @@ export default function SketchAndScoreClient() {
     }
     
     return () => {
+      if (video) {
         video.removeEventListener('loadeddata', updateSize);
+      }
     };
   }, [videoRef, drawingCanvasRef, gameState]);
 
@@ -379,13 +390,15 @@ export default function SketchAndScoreClient() {
             )}
             {gameState === 'DRAWING' && (
                 <div className="absolute bottom-4 left-0 right-0 flex justify-center items-center gap-4 z-20">
-                  <Button onClick={handleSubmit} size="lg" className="font-headline text-lg" >
-                    <Sparkles className="mr-2"/> Submit Drawing
-                  </Button>
-                  <Card className="p-2 px-4 flex items-center gap-2 bg-background/80">
-                    <span className="text-muted-foreground text-sm font-bold">TOOL:</span>
-                    {drawingTool === 'PENCIL' ? <Pencil className="h-6 w-6 text-primary"/> : <Eraser className="h-6 w-6 text-blue-400" />}
-                  </Card>
+                  <div className="flex justify-center w-full">
+                    <Button onClick={handleSubmit} size="lg" className="font-headline text-lg" >
+                      <Sparkles className="mr-2"/> Submit Drawing
+                    </Button>
+                    <Card className="p-2 px-4 flex items-center gap-2 bg-background/80 ml-4">
+                      <span className="text-muted-foreground text-sm font-bold">TOOL:</span>
+                      {drawingTool === 'PENCIL' ? <Pencil className="h-6 w-6 text-primary"/> : <Eraser className="h-6 w-6 text-blue-400" />}
+                    </Card>
+                  </div>
                 </div>
             )}
              {gameState === 'SUBMITTING' && (
@@ -415,3 +428,5 @@ export default function SketchAndScoreClient() {
     </div>
   );
 }
+
+    
