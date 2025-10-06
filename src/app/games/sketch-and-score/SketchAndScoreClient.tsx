@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { Loader, Pencil, Eraser, Sparkles, Circle, Square, Triangle, Star, Heart, ArrowRight, Home, CheckCircle2, XCircle, Hand } from 'lucide-react';
+import { countFingers } from '@/lib/finger-counting';
 
 type GameState = 'IDLE' | 'LOADING_CAMERA' | 'GET_READY' | 'COUNTDOWN' | 'DRAWING' | 'SUBMITTING' | 'FEEDBACK';
 type DrawingTool = 'PENCIL' | 'ERASER';
@@ -156,31 +157,8 @@ export default function SketchAndScoreClient() {
 
   // Helper to count fingers for a single hand
   const countFingersForHand = (handLandmarks: any[]): number => {
-    if (!handLandmarks || handLandmarks.length < 21) return 0;
-    
-    const tipIds = [4, 8, 12, 16, 20];
-    const pipIds = [2, 6, 10, 14, 18];
-    
-    let raisedFingers = 0;
-
-    // Thumb: Check if tip is "above" the MCP joint relative to the palm
-    // A simple x-check can be more stable for thumb than y-check
-    const hand = handedness.find(h => h[0].categoryName === 'Right') ? 'Right' : 'Left';
-    if(hand === 'Right'){
-      if (handLandmarks[tipIds[0]].x < handLandmarks[tipIds[0] - 1].x) raisedFingers++;
-    } else {
-      if (handLandmarks[tipIds[0]].x > handLandmarks[tipIds[0] - 1].x) raisedFingers++;
-    }
-
-
-    // Fingers: Check if tip is above the PIP joint
-    for (let i = 1; i < 5; i++) {
-      if (handLandmarks[tipIds[i]].y < handLandmarks[pipIds[i]].y) {
-        raisedFingers++;
-      }
-    }
-
-    return raisedFingers;
+    if (!handLandmarks || handLandmarks.length === 0) return 0;
+    return countFingers([handLandmarks], []); // Use the generic counter for one hand
   };
   
   const isPointing = (handLandmarks: any[]): boolean => {
@@ -203,98 +181,87 @@ export default function SketchAndScoreClient() {
   // Main gesture detection logic
   useEffect(() => {
     if (!landmarks.length || isHandTrackingLoading || gameState === 'SUBMITTING' || gameState === 'FEEDBACK') {
-        if (landmarks.length === 0) {
-            // Reset last finger count if no hands are detected
-            lastSecondaryFingers.current = 0;
-        }
+        lastSecondaryFingers.current = 0;
+        lastPosition.current = null;
         return;
     };
 
-    let totalFingers = landmarks.reduce((acc, hand) => acc + countFingersForHand(hand), 0);
+    const totalFingers = landmarks.reduce((sum, hand) => sum + countFingersForHand(hand), 0);
 
-    if (gameState === 'GET_READY' && totalFingers === 10) {
+    if (gameState === 'GET_READY') {
+      if (totalFingers >= 10) {
         setCountdown(COUNTDOWN_SECONDS);
         setGameState('COUNTDOWN');
-        return;
+      }
+      return;
     }
 
     if (gameState === 'DRAWING') {
-        if (totalFingers >= 10) {
-            clearCanvas();
-            lastPosition.current = null;
-            toast({ title: "Canvas Cleared!" });
-            return;
-        }
+      if (totalFingers >= 10) {
+          clearCanvas();
+          lastPosition.current = null;
+          toast({ title: "Canvas Cleared!" });
+          return;
+      }
         
-        let primaryHand: any[] | null = null;
-        let secondaryHand: any[] | null = null;
-        
-        const pointingHandIndex = landmarks.findIndex(isPointing);
+      const pointingHandIndex = landmarks.findIndex(isPointing);
+      const primaryHand = pointingHandIndex !== -1 ? landmarks[pointingHandIndex] : null;
+      const secondaryHand = pointingHandIndex !== -1 ? landmarks[1 - pointingHandIndex] : landmarks[0];
 
-        if (pointingHandIndex !== -1) {
-            primaryHand = landmarks[pointingHandIndex];
-            secondaryHand = landmarks[1 - pointingHandIndex]; // The other hand
-        } else {
-            // No hand is pointing, reset drawing position and gesture memory
-            lastPosition.current = null;
-            lastSecondaryFingers.current = 0; 
-            return;
-        }
+      // Process gestures from the secondary hand
+      const secondaryFingers = secondaryHand ? countFingersForHand(secondaryHand) : 0;
+      
+      if (secondaryFingers !== lastSecondaryFingers.current) {
+           if (secondaryFingers === 5) {
+              if(drawingTool !== 'ERASER') {
+                setDrawingTool('ERASER');
+                toast({title: "Eraser activated!"});
+              }
+          } else if (secondaryFingers === 4) {
+               if(drawingTool !== 'PENCIL') {
+                setDrawingTool('PENCIL');
+                toast({title: "Pencil activated!"});
+              }
+          }
+      }
+      lastSecondaryFingers.current = secondaryFingers;
 
-        // Process gestures from the secondary hand
-        const secondaryFingers = secondaryHand ? countFingersForHand(secondaryHand) : 0;
-        
-        // Only process gesture if the finger count has changed to prevent flickering
-        if (secondaryFingers !== lastSecondaryFingers.current) {
-             if (secondaryFingers === 5) {
-                if(drawingTool !== 'ERASER') {
-                  setDrawingTool('ERASER');
-                  toast({title: "Eraser activated!"});
-                }
-            } else if (secondaryFingers === 4) {
-                 if(drawingTool !== 'PENCIL') {
-                  setDrawingTool('PENCIL');
-                  toast({title: "Pencil activated!"});
-                }
-            }
-        }
-        lastSecondaryFingers.current = secondaryFingers;
+      // Handle drawing with primary hand
+      if (primaryHand) {
+          const indexTip = primaryHand[8];
+          const ctx = getDrawingContext();
+          
+          if (drawingCanvasRef.current && indexTip && ctx) {
+              const canvas = drawingCanvasRef.current;
+              const x = (1 - indexTip.x) * canvas.width;
+              const y = indexTip.y * canvas.height;
 
-        // Handle drawing with primary hand
-        if (primaryHand) {
-            const indexTip = primaryHand[8];
-            const ctx = getDrawingContext();
-            
-            if (drawingCanvasRef.current && indexTip && ctx) {
-                const canvas = drawingCanvasRef.current;
-                const x = (1 - indexTip.x) * canvas.width;
-                const y = indexTip.y * canvas.height;
+              if (drawingTool === 'PENCIL') {
+                  ctx.globalCompositeOperation = 'source-over';
+                  ctx.strokeStyle = 'black';
+                  ctx.lineWidth = 5;
+              } else { // ERASER
+                  ctx.globalCompositeOperation = 'destination-out';
+                  ctx.lineWidth = 25;
+              }
+              
+              ctx.lineCap = 'round';
+              ctx.lineJoin = 'round';
 
-                if (drawingTool === 'PENCIL') {
-                    ctx.globalCompositeOperation = 'source-over';
-                    ctx.strokeStyle = 'black';
-                    ctx.lineWidth = 5;
-                } else { // ERASER
-                    ctx.globalCompositeOperation = 'destination-out';
-                    ctx.lineWidth = 25;
-                }
-                
-                ctx.beginPath();
-                ctx.lineCap = 'round';
-                ctx.lineJoin = 'round';
-
-                if (lastPosition.current) {
-                    ctx.moveTo(lastPosition.current.x, lastPosition.current.y);
-                } else {
-                    ctx.moveTo(x, y);
-                }
-                ctx.lineTo(x, y);
-                ctx.stroke();
-                lastPosition.current = { x, y };
-            }
-        } else {
-            lastPosition.current = null;
-        }
+              if (lastPosition.current) {
+                  // Use quadratic curve for smoothing
+                  const midX = (lastPosition.current.x + x) / 2;
+                  const midY = (lastPosition.current.y + y) / 2;
+                  ctx.beginPath();
+                  ctx.moveTo(midX, midY);
+                  ctx.quadraticCurveTo(lastPosition.current.x, lastPosition.current.y, x, y);
+                  ctx.stroke();
+              }
+              lastPosition.current = { x, y };
+          }
+      } else {
+          lastPosition.current = null;
+      }
     }
 }, [landmarks, handedness, gameState, drawingTool, clearCanvas, toast, getDrawingContext, isHandTrackingLoading]);
   
@@ -315,8 +282,7 @@ export default function SketchAndScoreClient() {
         }
     };
     
-    // Check if video is ready, otherwise wait for the loadeddata event
-    if (video.readyState >= 2) { // HAVE_CURRENT_DATA
+    if (video.readyState >= 2) {
         updateSize();
     } else {
         video.addEventListener('loadeddata', updateSize, { once: true });
@@ -354,7 +320,6 @@ export default function SketchAndScoreClient() {
     
     return (
         <>
-            {/* These elements are now always rendered after IDLE state */}
             <video ref={videoRef} autoPlay playsInline muted className="absolute top-0 left-0 w-full h-full object-cover scale-x-[-1]"></video>
             <canvas ref={handCanvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
             <canvas ref={drawingCanvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
@@ -428,5 +393,3 @@ export default function SketchAndScoreClient() {
     </div>
   );
 }
-
-    
