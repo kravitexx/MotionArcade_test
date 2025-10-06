@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { Loader, Pencil, Eraser, Sparkles, Circle, Square, Triangle, Star, Heart, ArrowRight, Home, CheckCircle2, XCircle, Hand } from 'lucide-react';
-import { Progress } from '@/components/ui/progress';
 
 type GameState = 'IDLE' | 'LOADING_CAMERA' | 'GET_READY' | 'COUNTDOWN' | 'DRAWING' | 'SUBMITTING' | 'FEEDBACK';
 type DrawingTool = 'PENCIL' | 'ERASER';
@@ -27,7 +26,7 @@ const shapeIcons: Record<string, React.ReactNode> = {
 
 
 export default function SketchAndScoreClient() {
-  const { videoRef, canvasRef: handCanvasRef, landmarks, detectedFingers, handedness, startVideo, stopVideo, isLoading: isHandTrackingLoading, error: handTrackingError } = useHandTracking();
+  const { videoRef, canvasRef: handCanvasRef, landmarks, handedness, startVideo, stopVideo, isLoading: isHandTrackingLoading, error: handTrackingError } = useHandTracking();
   const drawingCanvasRef = useRef<HTMLCanvasElement>(null);
   const lastPosition = useRef<{ x: number, y: number } | null>(null);
   
@@ -41,6 +40,18 @@ export default function SketchAndScoreClient() {
   const [feedback, setFeedback] = useState<{isMatch: boolean, message: string} | null>(null);
 
   const getDrawingContext = useCallback(() => drawingCanvasRef.current?.getContext('2d'), []);
+
+  useEffect(() => {
+    if (handTrackingError) {
+      toast({
+        variant: 'destructive',
+        title: 'Camera Error',
+        description: handTrackingError,
+      });
+      setGameState('IDLE');
+      stopVideo();
+    }
+  }, [handTrackingError, toast, stopVideo]);
 
   const fetchNewShape = useCallback(async () => {
     try {
@@ -60,10 +71,12 @@ export default function SketchAndScoreClient() {
   const startGame = useCallback(async () => {
     setScore(0);
     setGameState('LOADING_CAMERA');
+    // The use-hand-tracking hook will handle the error display
     try {
       await startVideo();
       await fetchNewShape();
     } catch (e) {
+      // Errors are handled by the hook, just reset state
       setGameState('IDLE');
     }
   }, [startVideo, fetchNewShape]);
@@ -90,7 +103,33 @@ export default function SketchAndScoreClient() {
     if(!drawingCanvasRef.current || !shapeToDraw) return;
     setGameState('SUBMITTING');
 
-    const drawingDataUri = drawingCanvasRef.current.toDataURL('image/png');
+    // Create a temporary canvas to draw the final image for the AI
+    const tempCanvas = document.createElement('canvas');
+    const tempCtx = tempCanvas.getContext('2d');
+    const sourceCanvas = drawingCanvasRef.current;
+    
+    if (!tempCtx) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Could not process drawing.",
+      });
+      setGameState('DRAWING');
+      return;
+    }
+
+    tempCanvas.width = sourceCanvas.width;
+    tempCanvas.height = sourceCanvas.height;
+
+    // Fill the background with white
+    tempCtx.fillStyle = '#FFFFFF';
+    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+    // Draw the user's drawing on top
+    tempCtx.drawImage(sourceCanvas, 0, 0);
+
+    // Get the data URI from the temporary canvas
+    const drawingDataUri = tempCanvas.toDataURL('image/png');
 
     try {
         const result = await evaluatePlayerDrawing({ shapeToDraw: shapeToDraw, drawingDataUri });
@@ -117,7 +156,7 @@ export default function SketchAndScoreClient() {
   }
 
   // Helper to count fingers for a single hand
-  const countFingersForHand = (handLandmarks: any[], handednessName: 'Left' | 'Right'): number => {
+  const countFingersForHand = (handLandmarks: any[]): number => {
     if (!handLandmarks || handLandmarks.length < 21) return 0;
     
     const tipIds = [4, 8, 12, 16, 20];
@@ -125,20 +164,10 @@ export default function SketchAndScoreClient() {
     
     let raisedFingers = 0;
 
-    // Thumb: Check if it's extended away from the hand
-    const thumbTip = handLandmarks[tipIds[0]];
-    const indexMcp = handLandmarks[5];
-    // This logic needs to be different for left vs right hand because the x-coordinates are mirrored for one.
-    // However, the handedness data from mediapipe is based on the un-mirrored video.
-    // A simpler approach is just to check vertical position.
-    const isThumbUp = thumbTip.y < handLandmarks[tipIds[0] - 1].y;
-
-    if (handednessName === 'Right') {
-      if (isThumbUp && thumbTip.x < handLandmarks[tipIds[0] - 1].x) raisedFingers++;
-    } else { // Left hand
-      if (isThumbUp && thumbTip.x > handLandmarks[tipIds[0] - 1].x) raisedFingers++;
+    // Thumb: Simple vertical check
+    if (handLandmarks[tipIds[0]].y < handLandmarks[pipIds[0]].y) {
+       raisedFingers++;
     }
-
 
     // Fingers: Check if tip is above the PIP joint
     for (let i = 1; i < 5; i++) {
@@ -157,13 +186,13 @@ export default function SketchAndScoreClient() {
     let leftHandFingers = 0;
     let rightHandFingers = 0;
     let rightHandLandmarks: typeof landmarks[0] | null = null;
-    let totalFingers = 0;
 
+    // Find left and right hands
     for (let i = 0; i < handedness.length; i++) {
       const hand = handedness[i][0];
       const handLandmarks = landmarks[i];
-      const fingerCount = countFingersForHand(handLandmarks, hand.categoryName as "Left" | "Right");
-      totalFingers += fingerCount;
+      const fingerCount = countFingersForHand(handLandmarks);
+
       if (hand.categoryName === 'Left') {
           leftHandFingers = fingerCount;
       } else if (hand.categoryName === 'Right') {
@@ -171,6 +200,7 @@ export default function SketchAndScoreClient() {
           rightHandLandmarks = handLandmarks;
       }
     }
+    const totalFingers = leftHandFingers + rightHandFingers;
     
     // Handle game state transitions based on gestures
     if (gameState === 'GET_READY' && totalFingers === 10) {
@@ -181,7 +211,7 @@ export default function SketchAndScoreClient() {
     
     if (gameState === 'DRAWING') {
       // 10 fingers to clear canvas
-      if (totalFingers === 10) {
+      if (totalFingers >= 10) {
           clearCanvas();
           lastPosition.current = null;
           toast({ title: "Canvas Cleared!" });
@@ -269,6 +299,7 @@ export default function SketchAndScoreClient() {
 
 
   const renderContent = () => {
+    // IDLE is the only state without the camera
     if (gameState === 'IDLE') {
       return (
         <div className="flex items-center justify-center h-full">
@@ -290,9 +321,9 @@ export default function SketchAndScoreClient() {
       );
     }
     
-    // All other states show the camera view
+    // All other states show the camera view with overlays
     return (
-        <div className="w-full h-full relative flex justify-center items-center">
+        <>
             {/* Video and Canvases are always present after IDLE state */}
             <video ref={videoRef} autoPlay playsInline muted className="absolute top-0 left-0 w-full h-full object-cover scale-x-[-1]"></video>
             <canvas ref={handCanvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
@@ -355,16 +386,18 @@ export default function SketchAndScoreClient() {
                     <Button onClick={handleNextQuestion} size="lg" className="font-headline text-lg mt-4">Next Shape</Button>
                 </div>
             )}
-        </div>
+        </>
     );
   }
 
 
   return (
     <div className="container mx-auto px-4 py-8 flex-grow flex flex-col items-center justify-center">
-      <div className="w-full max-w-7xl aspect-video relative bg-muted rounded-lg shadow-lg overflow-hidden">
+      <div className="w-full max-w-7xl aspect-video relative rounded-lg shadow-lg overflow-hidden">
         {renderContent()}
       </div>
     </div>
   );
 }
+
+    
