@@ -43,7 +43,6 @@ export default function SketchAndScoreClient() {
   const getDrawingContext = useCallback(() => drawingCanvasRef.current?.getContext('2d'), []);
 
   const fetchNewShape = useCallback(async () => {
-    // This state is very brief, just to show a loading indicator for the AI call
     try {
       const { shape } = await generateShapeToDraw();
       setShapeToDraw(shape);
@@ -65,8 +64,6 @@ export default function SketchAndScoreClient() {
       await startVideo();
       await fetchNewShape();
     } catch (e) {
-      // Errors from startVideo (like permission denied) are handled by the hook's error state
-      // so we just need to reset the game state.
       setGameState('IDLE');
     }
   }, [startVideo, fetchNewShape]);
@@ -119,102 +116,10 @@ export default function SketchAndScoreClient() {
     fetchNewShape();
   }
 
-  // Main gesture detection logic
-  useEffect(() => {
-    if (!landmarks.length || !handedness.length || isHandTrackingLoading) return;
-
-    // Use a more robust way to count fingers for multiple hands
-    let leftHandFingers = 0;
-    let rightHandFingers = 0;
-    let primaryHandLandmarks: typeof landmarks[0] | null = null;
-
-    for (let i = 0; i < handedness.length; i++) {
-        const hand = handedness[i][0];
-        const handLandmarks = landmarks[i];
-        // Note: The generic countFingers might not be ideal for specific gestures.
-        // We'll use a custom, more direct finger counting method for gestures.
-        const fingerCount = countFingersForHand(handLandmarks, hand.categoryName as "Left" | "Right");
-        if (hand.categoryName === 'Left') {
-            leftHandFingers = fingerCount;
-        } else if (hand.categoryName === 'Right') {
-            rightHandFingers = fingerCount;
-            primaryHandLandmarks = handLandmarks;
-        }
-    }
-    // Default to first hand if right hand isn't detected
-    if (!primaryHandLandmarks && landmarks.length > 0) {
-        primaryHandLandmarks = landmarks[0];
-    }
-
-    const secondaryHandFingers = leftHandFingers;
-    const totalFingers = leftHandFingers + rightHandFingers;
-    
-    // Handle game state transitions based on gestures
-    if (gameState === 'GET_READY' && totalFingers === 10) {
-        setCountdown(COUNTDOWN_SECONDS);
-        setGameState('COUNTDOWN');
-    } else if (gameState === 'DRAWING') {
-      if (totalFingers === 10) { // Reset
-          clearCanvas();
-          lastPosition.current = null;
-          toast({ title: "Canvas Cleared!" });
-          return;
-      }
-      
-      const isPaused = secondaryHandFingers === 5;
-      
-      if(secondaryHandFingers === 3) {
-        if(drawingTool !== 'ERASER') setDrawingTool('ERASER');
-      } else {
-        if(drawingTool !== 'PENCIL') setDrawingTool('PENCIL');
-      }
-
-      if (isPaused) {
-        lastPosition.current = null; // Lift the pencil
-        return;
-      }
-
-      if (primaryHandLandmarks) {
-        const indexTip = primaryHandLandmarks[8];
-        const ctx = getDrawingContext();
-        if (drawingCanvasRef.current && indexTip && ctx) {
-          const canvas = drawingCanvasRef.current;
-          const x = (1 - indexTip.x) * canvas.width;
-          const y = indexTip.y * canvas.height;
-
-           if (drawingTool === 'PENCIL') {
-            ctx.globalCompositeOperation = 'source-over';
-            ctx.strokeStyle = 'black';
-            ctx.lineWidth = 5;
-          } else { // ERASER
-            ctx.globalCompositeOperation = 'destination-out';
-            ctx.lineWidth = 20;
-          }
-
-          ctx.beginPath();
-          ctx.lineCap = 'round';
-          ctx.lineJoin = 'round';
-
-          if (lastPosition.current) {
-            ctx.moveTo(lastPosition.current.x, lastPosition.current.y);
-          }
-          ctx.lineTo(x, y);
-          ctx.stroke();
-          lastPosition.current = { x, y };
-        } else {
-            lastPosition.current = null;
-        }
-      } else {
-        lastPosition.current = null;
-      }
-    }
-  }, [landmarks, handedness, gameState, drawingTool, clearCanvas, toast, getDrawingContext, isHandTrackingLoading]);
-
   // Helper to count fingers for a single hand
   const countFingersForHand = (handLandmarks: any[], handednessName: 'Left' | 'Right'): number => {
     if (!handLandmarks || handLandmarks.length < 21) return 0;
     
-    // Landmark indices for finger tips and PIP joints
     const tipIds = [4, 8, 12, 16, 20];
     const pipIds = [2, 6, 10, 14, 18];
     
@@ -223,11 +128,17 @@ export default function SketchAndScoreClient() {
     // Thumb: Check if it's extended away from the hand
     const thumbTip = handLandmarks[tipIds[0]];
     const indexMcp = handLandmarks[5];
+    // This logic needs to be different for left vs right hand because the x-coordinates are mirrored for one.
+    // However, the handedness data from mediapipe is based on the un-mirrored video.
+    // A simpler approach is just to check vertical position.
+    const isThumbUp = thumbTip.y < handLandmarks[tipIds[0] - 1].y;
+
     if (handednessName === 'Right') {
-      if (thumbTip.x < indexMcp.x) raisedFingers++;
+      if (isThumbUp && thumbTip.x < handLandmarks[tipIds[0] - 1].x) raisedFingers++;
     } else { // Left hand
-      if (thumbTip.x > indexMcp.x) raisedFingers++;
+      if (isThumbUp && thumbTip.x > handLandmarks[tipIds[0] - 1].x) raisedFingers++;
     }
+
 
     // Fingers: Check if tip is above the PIP joint
     for (let i = 1; i < 5; i++) {
@@ -238,6 +149,99 @@ export default function SketchAndScoreClient() {
 
     return raisedFingers;
   };
+
+  // Main gesture detection logic
+  useEffect(() => {
+    if (!landmarks.length || !handedness.length || isHandTrackingLoading || gameState === 'SUBMITTING' || gameState === 'FEEDBACK') return;
+    
+    let leftHandFingers = 0;
+    let rightHandFingers = 0;
+    let rightHandLandmarks: typeof landmarks[0] | null = null;
+    let totalFingers = 0;
+
+    for (let i = 0; i < handedness.length; i++) {
+      const hand = handedness[i][0];
+      const handLandmarks = landmarks[i];
+      const fingerCount = countFingersForHand(handLandmarks, hand.categoryName as "Left" | "Right");
+      totalFingers += fingerCount;
+      if (hand.categoryName === 'Left') {
+          leftHandFingers = fingerCount;
+      } else if (hand.categoryName === 'Right') {
+          rightHandFingers = fingerCount;
+          rightHandLandmarks = handLandmarks;
+      }
+    }
+    
+    // Handle game state transitions based on gestures
+    if (gameState === 'GET_READY' && totalFingers === 10) {
+        setCountdown(COUNTDOWN_SECONDS);
+        setGameState('COUNTDOWN');
+        return;
+    } 
+    
+    if (gameState === 'DRAWING') {
+      // 10 fingers to clear canvas
+      if (totalFingers === 10) {
+          clearCanvas();
+          lastPosition.current = null;
+          toast({ title: "Canvas Cleared!" });
+          return; // Stop processing other gestures for this frame
+      }
+
+      // Check secondary (left) hand for tool controls
+      if (leftHandFingers === 3) {
+        if(drawingTool !== 'ERASER') setDrawingTool('ERASER');
+      } else {
+        if(drawingTool !== 'PENCIL') setDrawingTool('PENCIL');
+      }
+      
+      const isPaused = leftHandFingers === 5;
+      
+      if (isPaused) {
+        lastPosition.current = null; // Lift the pencil
+        return;
+      }
+
+      // Check primary (right) hand for drawing
+      if (rightHandLandmarks && rightHandFingers === 1) {
+        const indexTip = rightHandLandmarks[8];
+        const ctx = getDrawingContext();
+
+        if (drawingCanvasRef.current && indexTip && ctx) {
+          const canvas = drawingCanvasRef.current;
+          // IMPORTANT: video is flipped horizontally, so we must flip the x-coordinate
+          const x = (1 - indexTip.x) * canvas.width; 
+          const y = indexTip.y * canvas.height;
+
+           if (drawingTool === 'PENCIL') {
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 5;
+          } else { // ERASER
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.lineWidth = 25;
+          }
+
+          ctx.beginPath();
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+
+          if (lastPosition.current) {
+            ctx.moveTo(lastPosition.current.x, lastPosition.current.y);
+          } else {
+            ctx.moveTo(x, y); // Start drawing from the current point if pen was lifted
+          }
+          ctx.lineTo(x, y);
+          ctx.stroke();
+          lastPosition.current = { x, y };
+        } 
+      } else {
+          // If not drawing (e.g., right hand doesn't have 1 finger up), lift the pen
+          lastPosition.current = null;
+      }
+    }
+  }, [landmarks, handedness, gameState, drawingTool, clearCanvas, toast, getDrawingContext, isHandTrackingLoading]);
+  
   
   // Keep drawing canvas size in sync with video
   useEffect(() => {
@@ -298,7 +302,7 @@ export default function SketchAndScoreClient() {
             {(isHandTrackingLoading || gameState === 'LOADING_CAMERA') && (
               <div className="absolute inset-0 bg-black/60 flex flex-col gap-4 items-center justify-center rounded-lg text-white z-30">
                 <Loader className="h-16 w-16 animate-spin" />
-                <p className="font-headline text-3xl">{isHandTrackingLoading ? "Loading Hand Tracking..." : "Starting Camera..."}</p>
+                <p className="font-headline text-3xl">{gameState === 'LOADING_CAMERA' ? "Starting Camera..." : "Loading Hand Tracking..."}</p>
               </div>
             )}
 
