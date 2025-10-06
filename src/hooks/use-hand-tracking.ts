@@ -71,6 +71,7 @@ export function useHandTracking(): HandTrackingHook {
       canvasCtx.restore();
     }
     
+    // This part seems to be causing confusion, delegating all finger counting to the lib
     const totalFingerCount = countFingers(results.landmarks, results.handedness);
     
     setDetectedFingers(totalFingerCount);
@@ -95,43 +96,51 @@ export function useHandTracking(): HandTrackingHook {
     }
   }, [predictWebcam]);
 
-  const startVideo = useCallback(async (): Promise<void> => {
-    return new Promise(async (resolve, reject) => {
-        if (isLoading || (videoRef.current && videoRef.current.srcObject)) {
-            resolve();
-            return;
+  const waitForVideo = (): Promise<HTMLVideoElement> => {
+    return new Promise((resolve, reject) => {
+      const checkVideo = () => {
+        if (videoRef.current) {
+          resolve(videoRef.current);
+        } else {
+          setTimeout(checkVideo, 100); // Check again in 100ms
         }
-    
-        setError(null);
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
+      };
+      checkVideo();
+    });
+  };
+
+  const startVideo = useCallback(async (): Promise<void> => {
+    if (isLoading || (videoRef.current && videoRef.current.srcObject)) {
+        return;
+    }
+
+    setError(null);
+    try {
+        const video = await waitForVideo();
+        const stream = await navigator.mediaDevices.getUserMedia({
             video: { 
-              width: { ideal: isMobile ? 640 : 1280 }, 
-              height: { ideal: isMobile ? 480 : 720 },
-              facingMode: "user" 
+                width: { ideal: isMobile ? 640 : 1280 }, 
+                height: { ideal: isMobile ? 480 : 720 },
+                facingMode: "user" 
             },
             audio: false,
-          });
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-            const videoReady = () => {
-                predictWebcam();
-                videoRef.current?.removeEventListener('loadeddata', videoReady);
-                resolve();
-            }
-            videoRef.current.addEventListener('loadeddata', videoReady);
-          } else {
-            reject(new Error("Video ref not available"));
-          }
-        } catch (err: any) {
-          if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        });
+
+        video.srcObject = stream;
+        const videoReady = () => {
+            predictWebcam();
+            video.removeEventListener('loadeddata', videoReady);
+        };
+        video.addEventListener('loadeddata', videoReady);
+
+    } catch (err: any) {
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
             setError('Camera permission denied. Please allow camera access to play.');
-          } else {
+        } else {
             setError(`Could not access camera: ${err.message}`);
-          }
-          reject(err);
         }
-    });
+        throw err; // Re-throw so the calling component knows about the failure
+    }
   }, [isLoading, isMobile, predictWebcam]);
 
 
