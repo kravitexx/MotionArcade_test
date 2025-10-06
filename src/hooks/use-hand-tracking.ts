@@ -97,12 +97,12 @@ export function useHandTracking(): HandTrackingHook {
   }, [predictWebcam]);
 
   const waitForVideo = (): Promise<HTMLVideoElement> => {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const checkVideo = () => {
         if (videoRef.current) {
           resolve(videoRef.current);
         } else {
-          setTimeout(checkVideo, 100); // Check again in 100ms
+          setTimeout(checkVideo, 50); // Check again in 50ms
         }
       };
       checkVideo();
@@ -110,37 +110,41 @@ export function useHandTracking(): HandTrackingHook {
   };
 
   const startVideo = useCallback(async (): Promise<void> => {
-    if (isLoading || (videoRef.current && videoRef.current.srcObject)) {
+    return new Promise(async (resolve, reject) => {
+      if (isLoading || (videoRef.current && videoRef.current.srcObject)) {
+        resolve();
         return;
-    }
+      }
 
-    setError(null);
-    try {
+      setError(null);
+      try {
         const video = await waitForVideo();
         const stream = await navigator.mediaDevices.getUserMedia({
-            video: { 
-                width: { ideal: isMobile ? 640 : 1280 }, 
-                height: { ideal: isMobile ? 480 : 720 },
-                facingMode: "user" 
-            },
-            audio: false,
+          video: { 
+            width: { ideal: isMobile ? 640 : 1280 }, 
+            height: { ideal: isMobile ? 480 : 720 },
+            facingMode: "user" 
+          },
+          audio: false,
         });
 
         video.srcObject = stream;
         const videoReady = () => {
-            predictWebcam();
-            video.removeEventListener('loadeddata', videoReady);
+          predictWebcam();
+          video.removeEventListener('loadeddata', videoReady);
+          resolve();
         };
         video.addEventListener('loadeddata', videoReady);
 
-    } catch (err: any) {
+      } catch (err: any) {
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-            setError('Camera permission denied. Please allow camera access to play.');
+          setError('Camera permission denied. Please allow camera access to play.');
         } else {
-            setError(`Could not access camera: ${err.message}`);
+          setError(`Could not access camera: ${err.message}`);
         }
-        throw err; // Re-throw so the calling component knows about the failure
-    }
+        reject(err);
+      }
+    });
   }, [isLoading, isMobile, predictWebcam]);
 
 

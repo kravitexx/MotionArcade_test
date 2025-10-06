@@ -43,7 +43,7 @@ export default function SketchAndScoreClient() {
   const getDrawingContext = useCallback(() => drawingCanvasRef.current?.getContext('2d'), []);
 
   const fetchNewShape = useCallback(async () => {
-    setGameState('LOADING_CAMERA'); // This will be quickly overridden but sets a loading state
+    // This state is very brief, just to show a loading indicator for the AI call
     try {
       const { shape } = await generateShapeToDraw();
       setShapeToDraw(shape);
@@ -61,8 +61,14 @@ export default function SketchAndScoreClient() {
   const startGame = useCallback(async () => {
     setScore(0);
     setGameState('LOADING_CAMERA');
-    await startVideo();
-    await fetchNewShape();
+    try {
+      await startVideo();
+      await fetchNewShape();
+    } catch (e) {
+      // Errors from startVideo (like permission denied) are handled by the hook's error state
+      // so we just need to reset the game state.
+      setGameState('IDLE');
+    }
   }, [startVideo, fetchNewShape]);
 
   // Countdown logic
@@ -125,6 +131,8 @@ export default function SketchAndScoreClient() {
     for (let i = 0; i < handedness.length; i++) {
         const hand = handedness[i][0];
         const handLandmarks = landmarks[i];
+        // Note: The generic countFingers might not be ideal for specific gestures.
+        // We'll use a custom, more direct finger counting method for gestures.
         const fingerCount = countFingersForHand(handLandmarks, hand.categoryName as "Left" | "Right");
         if (hand.categoryName === 'Left') {
             leftHandFingers = fingerCount;
@@ -141,7 +149,6 @@ export default function SketchAndScoreClient() {
     const secondaryHandFingers = leftHandFingers;
     const totalFingers = leftHandFingers + rightHandFingers;
     
-
     // Handle game state transitions based on gestures
     if (gameState === 'GET_READY' && totalFingers === 10) {
         setCountdown(COUNTDOWN_SECONDS);
@@ -205,26 +212,28 @@ export default function SketchAndScoreClient() {
 
   // Helper to count fingers for a single hand
   const countFingersForHand = (handLandmarks: any[], handednessName: 'Left' | 'Right'): number => {
-    if (!handLandmarks) return 0;
+    if (!handLandmarks || handLandmarks.length < 21) return 0;
     
-    const fingerTips = [handLandmarks[8], handLandmarks[12], handLandmarks[16], handLandmarks[20]];
-    const fingerMcps = [handLandmarks[5], handLandmarks[9], handLandmarks[13], handLandmarks[17]];
+    // Landmark indices for finger tips and PIP joints
+    const tipIds = [4, 8, 12, 16, 20];
+    const pipIds = [2, 6, 10, 14, 18];
     
     let raisedFingers = 0;
-    // Check index, middle, ring, pinky
-    for(let i=0; i<fingerTips.length; i++) {
-        if (fingerTips[i].y < fingerMcps[i].y) {
-            raisedFingers++;
-        }
-    }
-    
-    // Thumb check
-    const thumbTip = handLandmarks[4];
+
+    // Thumb: Check if it's extended away from the hand
+    const thumbTip = handLandmarks[tipIds[0]];
     const indexMcp = handLandmarks[5];
     if (handednessName === 'Right') {
       if (thumbTip.x < indexMcp.x) raisedFingers++;
     } else { // Left hand
       if (thumbTip.x > indexMcp.x) raisedFingers++;
+    }
+
+    // Fingers: Check if tip is above the PIP joint
+    for (let i = 1; i < 5; i++) {
+      if (handLandmarks[tipIds[i]].y < handLandmarks[pipIds[i]].y) {
+        raisedFingers++;
+      }
     }
 
     return raisedFingers;
@@ -277,24 +286,24 @@ export default function SketchAndScoreClient() {
       );
     }
     
-    if (isHandTrackingLoading || gameState === 'LOADING_CAMERA') {
-      return (
-        <div className="flex flex-col gap-4 items-center justify-center text-foreground h-full">
-          <Loader className="h-16 w-16 animate-spin" />
-          <p className="font-headline text-2xl">{isHandTrackingLoading ? "Loading Hand Tracking..." : "Starting Camera..."}</p>
-        </div>
-      );
-    }
-
     // All other states show the camera view
     return (
         <div className="w-full h-full relative flex justify-center items-center">
+            {/* Video and Canvases are always present after IDLE state */}
             <video ref={videoRef} autoPlay playsInline muted className="absolute top-0 left-0 w-full h-full object-cover scale-x-[-1]"></video>
             <canvas ref={handCanvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
             <canvas ref={drawingCanvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
 
+            {/* Loading Overlay */}
+            {(isHandTrackingLoading || gameState === 'LOADING_CAMERA') && (
+              <div className="absolute inset-0 bg-black/60 flex flex-col gap-4 items-center justify-center rounded-lg text-white z-30">
+                <Loader className="h-16 w-16 animate-spin" />
+                <p className="font-headline text-3xl">{isHandTrackingLoading ? "Loading Hand Tracking..." : "Starting Camera..."}</p>
+              </div>
+            )}
+
             {/* Shape to Draw Box */}
-            {shapeToDraw && gameState !== 'IDLE' && gameState !== 'FEEDBACK' && (
+            {shapeToDraw && gameState !== 'IDLE' && gameState !== 'FEEDBACK' && gameState !== 'LOADING_CAMERA' && (
               <Card className="absolute top-4 right-4 w-48 h-48 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm z-10">
                 <CardHeader className="p-2 text-center">
                   <CardTitle className="text-md font-headline">Draw This:</CardTitle>
