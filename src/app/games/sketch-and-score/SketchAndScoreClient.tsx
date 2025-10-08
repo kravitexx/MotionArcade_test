@@ -13,6 +13,8 @@ type DrawingTool = 'PENCIL' | 'ERASER';
 type HandChoice = 'Left' | 'Right';
 
 const COUNTDOWN_SECONDS = 3;
+const MIN_ERASER_SIZE = 5;
+const MAX_ERASER_SIZE = 50;
 
 // A mapping of shape names to Lucide icons
 const shapeIcons: Record<string, React.ReactNode> = {
@@ -41,6 +43,7 @@ export default function SketchAndScoreClient() {
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
   const [drawingTool, setDrawingTool] = useState<DrawingTool>('PENCIL');
   const [feedback, setFeedback] = useState<{isMatch: boolean, message: string} | null>(null);
+  const [eraserSize, setEraserSize] = useState(25);
 
   const getDrawingContext = useCallback(() => drawingCanvasRef.current?.getContext('2d'), []);
 
@@ -212,80 +215,114 @@ export default function SketchAndScoreClient() {
 
 
     let drawingHandLandmarks: any[] | null = null;
+    let gestureHandLandmarks: any[] | null = null;
+    const gestureHandChoice = drawingHand === 'Left' ? 'Right' : 'Left';
+
     
-    // Assign drawing hand based on user's choice and handedness detection
+    // Assign drawing hand and gesture hand based on user's choice and handedness detection
     for(let i=0; i<handedness.length; i++) {
       if (handedness[i][0].categoryName === drawingHand) {
         drawingHandLandmarks = landmarks[i];
-        break; // Found the drawing hand
+      } else if (handedness[i][0].categoryName === gestureHandChoice) {
+        gestureHandLandmarks = landmarks[i];
       }
     }
     
-    if (gameState === 'DRAWING' && drawingHandLandmarks) {
-        const pinching = isPinching(drawingHandLandmarks);
-        const pointing = isPointing(drawingHandLandmarks);
-        
-        let currentTool: DrawingTool | null = null;
-        let activeLandmark: any | null = null;
-
-        if (pinching) {
-            currentTool = 'ERASER';
-            activeLandmark = drawingHandLandmarks[8]; // Use index finger tip for erasing position
-        } else if (pointing) {
-            currentTool = 'PENCIL';
-            activeLandmark = drawingHandLandmarks[8];
-        }
-
-        if (currentTool && activeLandmark) {
-            if(drawingTool !== currentTool) {
-                setDrawingTool(currentTool);
-            }
+    if (gameState === 'DRAWING') {
+        if (drawingHandLandmarks) {
+            const pinching = isPinching(drawingHandLandmarks);
+            const pointing = isPointing(drawingHandLandmarks);
             
-            const ctx = getDrawingContext();
-            if (drawingCanvasRef.current && ctx) {
-                const canvas = drawingCanvasRef.current;
-                const x = activeLandmark.x * canvas.width;
-                const y = activeLandmark.y * canvas.height;
-                const mirroredX = canvas.width - x;
+            let currentTool: DrawingTool | null = null;
+            let activeLandmark: any | null = null;
 
-                if (currentTool === 'PENCIL') {
-                    ctx.globalCompositeOperation = 'source-over';
-                    ctx.strokeStyle = 'black';
-                    ctx.lineWidth = 5;
-                } else { // ERASER
-                    ctx.globalCompositeOperation = 'destination-out';
-                    ctx.lineWidth = 25;
+            if (pinching) {
+                currentTool = 'ERASER';
+                activeLandmark = drawingHandLandmarks[8]; // Use index finger tip for erasing position
+            } else if (pointing) {
+                currentTool = 'PENCIL';
+                activeLandmark = drawingHandLandmarks[8];
+            }
+
+            if (currentTool && activeLandmark) {
+                if(drawingTool !== currentTool) {
+                    setDrawingTool(currentTool);
                 }
                 
-                ctx.lineCap = 'round';
-                ctx.lineJoin = 'round';
-                
-                if (lastPosition.current) {
-                    const midPoint = {
-                        x: (lastPosition.current.x + mirroredX) / 2,
-                        y: (lastPosition.current.y + y) / 2
-                    };
-                    ctx.beginPath();
-                    ctx.moveTo(midPointRef.current?.x ?? lastPosition.current.x, midPointRef.current?.y ?? lastPosition.current.y);
-                    ctx.quadraticCurveTo(lastPosition.current.x, lastPosition.current.y, midPoint.x, midPoint.y);
-                    ctx.stroke();
-                    midPointRef.current = midPoint;
-                } else {
-                  ctx.beginPath();
-                  ctx.arc(mirroredX, y, ctx.lineWidth / 2, 0, Math.PI * 2);
-                  ctx.fill();
+                const ctx = getDrawingContext();
+                if (drawingCanvasRef.current && ctx) {
+                    const canvas = drawingCanvasRef.current;
+                    const x = activeLandmark.x * canvas.width;
+                    const y = activeLandmark.y * canvas.height;
+                    const mirroredX = canvas.width - x;
+
+                    if (currentTool === 'PENCIL') {
+                        ctx.globalCompositeOperation = 'source-over';
+                        ctx.strokeStyle = 'black';
+                        ctx.lineWidth = 5;
+                    } else { // ERASER
+                        ctx.globalCompositeOperation = 'destination-out';
+                        ctx.lineWidth = eraserSize;
+                    }
+                    
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    
+                    if (lastPosition.current) {
+                        const midPoint = {
+                            x: (lastPosition.current.x + mirroredX) / 2,
+                            y: (lastPosition.current.y + y) / 2
+                        };
+                        ctx.beginPath();
+                        ctx.moveTo(midPointRef.current?.x ?? lastPosition.current.x, midPointRef.current?.y ?? lastPosition.current.y);
+                        ctx.quadraticCurveTo(lastPosition.current.x, lastPosition.current.y, midPoint.x, midPoint.y);
+                        ctx.stroke();
+                        midPointRef.current = midPoint;
+                    } else {
+                      ctx.beginPath();
+                      ctx.arc(mirroredX, y, ctx.lineWidth / 2, 0, Math.PI * 2);
+                      ctx.fill();
+                    }
+                    lastPosition.current = { x: mirroredX, y };
                 }
-                lastPosition.current = { x: mirroredX, y };
+            } else {
+                lastPosition.current = null;
+                midPointRef.current = null;
             }
         } else {
-            lastPosition.current = null;
-            midPointRef.current = null;
+          lastPosition.current = null;
+          midPointRef.current = null;
+        }
+
+        if (gestureHandLandmarks && drawingTool === 'ERASER') {
+          const thumbTip = gestureHandLandmarks[4];
+          const indexTip = gestureHandLandmarks[8];
+          const distance = Math.sqrt(
+            Math.pow(thumbTip.x - indexTip.x, 2) +
+            Math.pow(thumbTip.y - indexTip.y, 2)
+          );
+
+          // Map distance to size (e.g. distance from 0.0 to 0.3)
+          const newSize = MIN_ERASER_SIZE + (distance / 0.3) * (MAX_ERASER_SIZE - MIN_ERASER_SIZE);
+          setEraserSize(Math.max(MIN_ERASER_SIZE, Math.min(MAX_ERASER_SIZE, newSize)));
+
+          // Draw eraser size indicator
+          const ctx = getDrawingContext();
+          if (ctx) {
+            const canvas = ctx.canvas;
+            const x = (1 - thumbTip.x) * canvas.width;
+            const y = thumbTip.y * canvas.height;
+            
+            ctx.font = '20px sans-serif';
+            ctx.fillStyle = 'black';
+            ctx.fillText(`Eraser size = ${Math.round(eraserSize)}`, x - 120, y);
+          }
         }
     } else {
         lastPosition.current = null;
         midPointRef.current = null;
     }
-}, [landmarks, handedness, gameState, drawingTool, clearCanvas, toast, getDrawingContext, isHandTrackingLoading, drawingHand, detectedFingers]);
+}, [landmarks, handedness, gameState, drawingTool, clearCanvas, toast, getDrawingContext, isHandTrackingLoading, drawingHand, detectedFingers, eraserSize]);
 
 
   // Keep drawing canvas size in sync with video
@@ -420,5 +457,3 @@ export default function SketchAndScoreClient() {
     </div>
   );
 }
-
-    
