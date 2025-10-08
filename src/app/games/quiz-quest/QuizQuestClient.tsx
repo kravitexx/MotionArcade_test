@@ -13,6 +13,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { DrawingUtils, HandLandmarker } from '@mediapipe/tasks-vision';
 
 type GameState = 'SUBJECT_SELECTION' | 'LOADING' | 'PLAYING' | 'HOLDING' | 'FEEDBACK' | 'LOADING_PROBLEM';
 
@@ -28,10 +29,11 @@ const subjects = [
 ];
 
 export default function QuizQuestClient() {
-  const { videoRef, canvasRef, detectedFingers, startVideo, stopVideo, isLoading: isHandTrackingLoading, error: handTrackingError } = useHandTracking();
+  const { videoRef, canvasRef, detectedFingers, landmarks, startVideo, stopVideo, isLoading: isHandTrackingLoading, error: handTrackingError } = useHandTracking();
   const { toast, dismiss } = useToast();
   const toastIdRef = useRef<string | null>(null);
   const isMobile = useIsMobile();
+  const drawingUtilsRef = useRef<DrawingUtils | null>(null);
 
   const [gameState, setGameState] = useState<GameState>('SUBJECT_SELECTION');
   const [currentProblem, setCurrentProblem] = useState<GenerateQuizQuestionOutput | null>(null);
@@ -64,6 +66,51 @@ export default function QuizQuestClient() {
       }
     }
   }, [handTrackingError, toast, stopVideo, dismiss]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        drawingUtilsRef.current = new DrawingUtils(ctx);
+      }
+    }
+  }, [canvasRef]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const drawingUtils = drawingUtilsRef.current;
+    const video = videoRef.current;
+    if (!canvas || !drawingUtils || !video || !landmarks.length) {
+      return;
+    }
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    if (video.videoWidth > 0 && (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight)) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+    }
+
+    ctx.save();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // The video is flipped, so we need to flip the canvas to draw correctly
+    ctx.scale(-1, 1);
+    ctx.translate(-canvas.width, 0);
+
+    for (const landmark of landmarks) {
+        drawingUtils.drawConnectors(landmark, HandLandmarker.HAND_CONNECTIONS, {
+            color: '#FFFFFF',
+            lineWidth: 2,
+        });
+        drawingUtils.drawLandmarks(landmark, { color: '#FF0000', lineWidth: 1, radius: 2 });
+    }
+    ctx.restore();
+
+  }, [landmarks, canvasRef, videoRef]);
+
 
   const getFinalSubjects = useCallback(() => {
     const finalSubjects = [...selectedSubjects];
@@ -299,5 +346,3 @@ export default function QuizQuestClient() {
     </div>
   );
 }
-
-    

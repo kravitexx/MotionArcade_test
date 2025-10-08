@@ -10,6 +10,7 @@ import { CheckCircle2, XCircle, Loader, Hand, Timer, Smartphone } from 'lucide-r
 import { Progress } from '@/components/ui/progress';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { DrawingUtils, HandLandmarker } from '@mediapipe/tasks-vision';
 
 type GameState = 'IDLE' | 'LOADING' | 'PLAYING' | 'HOLDING' | 'FEEDBACK' | 'LOADING_PROBLEM';
 
@@ -18,10 +19,11 @@ const PROBLEM_TIMER_SECONDS = 15;
 const ANSWER_HOLD_SECONDS = 3;
 
 export default function MathChallengeClient() {
-  const { videoRef, canvasRef, detectedFingers, startVideo, stopVideo, isLoading: isHandTrackingLoading, error: handTrackingError } = useHandTracking();
+  const { videoRef, canvasRef, detectedFingers, landmarks, startVideo, stopVideo, isLoading: isHandTrackingLoading, error: handTrackingError } = useHandTracking();
   const { toast, dismiss } = useToast();
   const toastIdRef = useRef<string | null>(null);
   const isMobile = useIsMobile();
+  const drawingUtilsRef = useRef<DrawingUtils | null>(null);
 
   const [gameState, setGameState] = useState<GameState>('IDLE');
   const [currentProblem, setCurrentProblem] = useState<GenerateMathProblemOutput | null>(null);
@@ -52,6 +54,51 @@ export default function MathChallengeClient() {
       }
     }
   }, [handTrackingError, toast, stopVideo, dismiss]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        drawingUtilsRef.current = new DrawingUtils(ctx);
+      }
+    }
+  }, [canvasRef]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const drawingUtils = drawingUtilsRef.current;
+    const video = videoRef.current;
+    if (!canvas || !drawingUtils || !video || !landmarks.length) {
+      return;
+    }
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    if (video.videoWidth > 0 && (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight)) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+    }
+
+    ctx.save();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // The video is flipped, so we need to flip the canvas to draw correctly
+    ctx.scale(-1, 1);
+    ctx.translate(-canvas.width, 0);
+
+    for (const landmark of landmarks) {
+        drawingUtils.drawConnectors(landmark, HandLandmarker.HAND_CONNECTIONS, {
+            color: '#FFFFFF',
+            lineWidth: 2,
+        });
+        drawingUtils.drawLandmarks(landmark, { color: '#FF0000', lineWidth: 1, radius: 2 });
+    }
+    ctx.restore();
+
+  }, [landmarks, canvasRef, videoRef]);
+
 
   const fetchNewProblem = useCallback(async () => {
     setGameState('LOADING_PROBLEM');

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { HandLandmarker, FilesetResolver, DrawingUtils } from '@mediapipe/tasks-vision';
+import { HandLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
 import type { HandLandmarkerResult, Landmark, Handedness } from '@mediapipe/tasks-vision';
 import { useIsMobile } from './use-mobile';
 
@@ -24,7 +24,6 @@ export function useHandTracking(): HandTrackingHook {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef<number>();
   const handLandmarkerRef = useRef<HandLandmarker | null>(null);
-  const drawingUtilsRef = useRef<DrawingUtils | null>(null);
   const isMobile = useIsMobile();
 
   const [isLoading, setIsLoading] = useState(true);
@@ -35,43 +34,14 @@ export function useHandTracking(): HandTrackingHook {
 
   const predictWebcam = useCallback(() => {
     const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas || !handLandmarkerRef.current || !video.srcObject || video.readyState < 2) {
+    if (!video || !handLandmarkerRef.current || !video.srcObject || video.readyState < 2) {
         requestRef.current = requestAnimationFrame(predictWebcam);
         return;
-    }
-    
-    if (video.videoWidth > 0 && (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight)) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
     }
 
     const startTimeMs = performance.now();
     const results = handLandmarkerRef.current.detectForVideo(video, startTimeMs);
-
-    const canvasCtx = canvas.getContext('2d');
-    if (canvasCtx && drawingUtilsRef.current) {
-      canvasCtx.save();
-      canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      if (results.landmarks) {
-        for (let i = 0; i < results.landmarks.length; i++) {
-          const landmark = results.landmarks[i];
-          const isRightHand = results.handedness[i] && results.handedness[i][0].categoryName === 'Right';
-          const connectorsColor = isRightHand ? 'rgba(230, 230, 250, 0.9)' : 'rgba(216, 191, 216, 0.7)';
-          const landmarksColor = isRightHand ? 'rgba(216, 191, 216, 0.9)' : 'rgba(230, 230, 250, 0.9)';
-
-          drawingUtilsRef.current.drawConnectors(landmark, HandLandmarker.HAND_CONNECTIONS, {
-            color: connectorsColor,
-            lineWidth: 2,
-          });
-          drawingUtilsRef.current.drawLandmarks(landmark, { color: landmarksColor, lineWidth: 1, radius: 2 });
-        }
-      }
-      canvasCtx.restore();
-    }
     
-    // This part seems to be causing confusion, delegating all finger counting to the lib
     const totalFingerCount = countFingers(results.landmarks, results.handedness);
     
     setDetectedFingers(totalFingerCount);
@@ -167,12 +137,6 @@ export function useHandTracking(): HandTrackingHook {
         });
         handLandmarkerRef.current = handLandmarker;
 
-        if (canvasRef.current) {
-          const canvasCtx = canvasRef.current.getContext('2d');
-          if (canvasCtx) {
-            drawingUtilsRef.current = new DrawingUtils(canvasCtx);
-          }
-        }
       } catch (e: any) {
         setError(`Failed to initialize hand tracking model: ${e.message}`);
       } finally {
