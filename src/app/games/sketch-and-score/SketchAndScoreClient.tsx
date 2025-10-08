@@ -30,6 +30,7 @@ export default function SketchAndScoreClient() {
   const { videoRef, landmarks, handedness, startVideo, stopVideo, isLoading: isHandTrackingLoading, error: handTrackingError, detectedFingers } = useHandTracking();
   const drawingCanvasRef = useRef<HTMLCanvasElement>(null);
   const lastPosition = useRef<{ x: number, y: number } | null>(null);
+  const midPointRef = useRef<{ x: number, y: number } | null>(null);
   
   const { toast } = useToast();
 
@@ -103,6 +104,8 @@ export default function SketchAndScoreClient() {
     if(ctx && drawingCanvasRef.current) {
         ctx.clearRect(0, 0, drawingCanvasRef.current.width, drawingCanvasRef.current.height);
     }
+    lastPosition.current = null;
+    midPointRef.current = null;
   }, [getDrawingContext]);
 
   const handleSubmit = async () => {
@@ -156,7 +159,6 @@ export default function SketchAndScoreClient() {
   const handleNextQuestion = () => {
     setFeedback(null);
     clearCanvas();
-    lastPosition.current = null;
     fetchNewShape();
   }
   
@@ -203,7 +205,6 @@ export default function SketchAndScoreClient() {
           setGameState('COUNTDOWN');
         } else if (gameState === 'DRAWING') {
           clearCanvas();
-          lastPosition.current = null;
           toast({ title: "Canvas Cleared!" });
         }
         return; // Important: Stop processing further gestures for this frame
@@ -243,8 +244,9 @@ export default function SketchAndScoreClient() {
             const ctx = getDrawingContext();
             if (drawingCanvasRef.current && ctx) {
                 const canvas = drawingCanvasRef.current;
-                const x = canvas.width - (activeLandmark.x * canvas.width);
+                const x = activeLandmark.x * canvas.width;
                 const y = activeLandmark.y * canvas.height;
+                const mirroredX = canvas.width - x;
 
                 if (currentTool === 'PENCIL') {
                     ctx.globalCompositeOperation = 'source-over';
@@ -255,24 +257,33 @@ export default function SketchAndScoreClient() {
                     ctx.lineWidth = 25;
                 }
                 
-                ctx.beginPath();
                 ctx.lineCap = 'round';
                 ctx.lineJoin = 'round';
-
+                
                 if (lastPosition.current) {
-                    ctx.moveTo(lastPosition.current.x, lastPosition.current.y);
+                    const midPoint = {
+                        x: (lastPosition.current.x + mirroredX) / 2,
+                        y: (lastPosition.current.y + y) / 2
+                    };
+                    ctx.beginPath();
+                    ctx.moveTo(midPointRef.current?.x ?? lastPosition.current.x, midPointRef.current?.y ?? lastPosition.current.y);
+                    ctx.quadraticCurveTo(lastPosition.current.x, lastPosition.current.y, midPoint.x, midPoint.y);
+                    ctx.stroke();
+                    midPointRef.current = midPoint;
                 } else {
-                    ctx.moveTo(x, y);
+                  ctx.beginPath();
+                  ctx.arc(mirroredX, y, ctx.lineWidth / 2, 0, Math.PI * 2);
+                  ctx.fill();
                 }
-                ctx.lineTo(x, y);
-                ctx.stroke();
-                lastPosition.current = { x, y };
+                lastPosition.current = { x: mirroredX, y };
             }
         } else {
             lastPosition.current = null;
+            midPointRef.current = null;
         }
     } else {
         lastPosition.current = null;
+        midPointRef.current = null;
     }
 }, [landmarks, handedness, gameState, drawingTool, clearCanvas, toast, getDrawingContext, isHandTrackingLoading, drawingHand, detectedFingers]);
 
@@ -337,8 +348,7 @@ export default function SketchAndScoreClient() {
     
     return (
         <>
-            {/* The video is now flipped via CSS to feel more natural */}
-            <video ref={videoRef} autoPlay playsInline muted className="absolute top-0 left-0 w-full h-full object-cover transform -scale-x-100"></video>
+            <video ref={videoRef} autoPlay playsInline muted className="absolute top-0 left-0 w-full h-full object-cover scale-x-[-1]"></video>
             <canvas ref={drawingCanvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
 
             {(isHandTrackingLoading || gameState === 'LOADING_CAMERA') && (
@@ -410,3 +420,5 @@ export default function SketchAndScoreClient() {
     </div>
   );
 }
+
+    
