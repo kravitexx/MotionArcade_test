@@ -186,19 +186,18 @@ export default function SketchAndScoreClient() {
         }
         return;
     }
-
-    if (gameState === 'GET_READY' && detectedFingers === 10) {
-        setCountdown(COUNTDOWN_SECONDS);
-        setGameState('COUNTDOWN');
-        return;
-    }
     
-    // During drawing, prioritize the 10-finger clear gesture
-    if (gameState === 'DRAWING' && detectedFingers === 10) {
-        clearCanvas();
-        lastPosition.current = null;
-        toast({ title: "Canvas Cleared!" });
-        return; // Important: Stop processing further gestures
+    // Prioritize the 10-finger clear gesture
+    if (detectedFingers === 10) {
+        if (gameState === 'GET_READY') {
+          setCountdown(COUNTDOWN_SECONDS);
+          setGameState('COUNTDOWN');
+        } else if (gameState === 'DRAWING') {
+          clearCanvas();
+          lastPosition.current = null;
+          toast({ title: "Canvas Cleared!" });
+        }
+        return; // Important: Stop processing further gestures for this frame
     }
 
 
@@ -220,20 +219,24 @@ export default function SketchAndScoreClient() {
         let gestureHandFingers = 0;
         const handIndex = landmarks.indexOf(gestureHandLandmarks);
         if (handIndex !== -1) {
-            // This logic is a bit simplified, ideally you'd have a more robust single-hand finger counter
-            const tipIds = [8, 12, 16, 20]; // index, middle, ring, pinky
-            const pipIds = [6, 10, 14, 18];
+            const tipIds = { thumb: 4, index: 8, middle: 12, ring: 16, pinky: 20 };
+            const mcpIds = { thumb: 2, index: 5, middle: 9, ring: 13, pinky: 17 };
+            const pipIds = { index: 6, middle: 10, ring: 14, pinky: 18 };
+            
             let raisedFingers = 0;
-            // Simple finger check (tip higher than pip)
-            for(let i = 0; i < tipIds.length; i++) {
-                if(gestureHandLandmarks[tipIds[i]].y < gestureHandLandmarks[pipIds[i]].y) {
-                    raisedFingers++;
-                }
+
+            if (gestureHandLandmarks[tipIds.index].y < gestureHandLandmarks[pipIds.index].y) raisedFingers++;
+            if (gestureHandLandmarks[tipIds.middle].y < gestureHandLandmarks[pipIds.middle].y) raisedFingers++;
+            if (gestureHandLandmarks[tipIds.ring].y < gestureHandLandmarks[pipIds.ring].y) raisedFingers++;
+            if (gestureHandLandmarks[tipIds.pinky].y < gestureHandLandmarks[pipIds.pinky].y) raisedFingers++;
+
+            const hand = handedness[handIndex][0].categoryName;
+            const thumbAngle = getAngle(gestureHandLandmarks[mcpIds.thumb], gestureHandLandmarks[tipIds.thumb - 1], gestureHandLandmarks[tipIds.thumb]);
+            
+            if (thumbAngle > 150.0) { // Angle for an extended thumb
+                raisedFingers++;
             }
-            // Simple thumb check (tip further from wrist on x-axis than MCP)
-            if(Math.abs(gestureHandLandmarks[4].x - gestureHandLandmarks[0].x) > Math.abs(gestureHandLandmarks[2].x - gestureHandLandmarks[0].x)) {
-               raisedFingers++;
-            }
+            
             gestureHandFingers = raisedFingers;
         }
 
@@ -262,7 +265,8 @@ export default function SketchAndScoreClient() {
         
         if (drawingCanvasRef.current && indexTip && ctx) {
             const canvas = drawingCanvasRef.current;
-            const x = indexTip.x * canvas.width;
+            // The video is flipped, so we must flip the X coordinate
+            const x = canvas.width - (indexTip.x * canvas.width);
             const y = indexTip.y * canvas.height;
 
             if (drawingTool === 'PENCIL') {
@@ -292,7 +296,16 @@ export default function SketchAndScoreClient() {
       }
     }
 }, [landmarks, handedness, gameState, drawingTool, clearCanvas, toast, getDrawingContext, isHandTrackingLoading, drawingHand, detectedFingers]);
-  
+
+// Function to calculate angle (needed for thumb detection)
+function getAngle(a: any, b: any, c: any): number {
+    const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
+    let angle = Math.abs(radians * 180.0 / Math.PI);
+    if (angle > 180.0) {
+        angle = 360 - angle;
+    }
+    return angle;
+}
   
   // Keep drawing canvas size in sync with video
   useEffect(() => {
