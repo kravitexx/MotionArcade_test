@@ -8,8 +8,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/hooks/use-toast';
 import { Loader, Pencil, Eraser, Sparkles, Circle, Square, Triangle, Star, Heart, ArrowRight, Home, CheckCircle2, XCircle, Hand } from 'lucide-react';
 
-type GameState = 'IDLE' | 'LOADING_CAMERA' | 'GET_READY' | 'COUNTDOWN' | 'DRAWING' | 'SUBMITTING' | 'FEEDBACK';
+type GameState = 'HAND_SELECTION' | 'IDLE' | 'LOADING_CAMERA' | 'GET_READY' | 'COUNTDOWN' | 'DRAWING' | 'SUBMITTING' | 'FEEDBACK';
 type DrawingTool = 'PENCIL' | 'ERASER';
+type HandChoice = 'Left' | 'Right';
 
 const COUNTDOWN_SECONDS = 3;
 
@@ -34,6 +35,7 @@ export default function SketchAndScoreClient() {
   const { toast } = useToast();
 
   const [gameState, setGameState] = useState<GameState>('IDLE');
+  const [drawingHand, setDrawingHand] = useState<HandChoice | null>(null);
   const [shapeToDraw, setShapeToDraw] = useState<string | null>(null);
   const [score, setScore] = useState(0);
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
@@ -80,6 +82,11 @@ export default function SketchAndScoreClient() {
       setGameState('IDLE');
     }
   }, [startVideo, fetchNewShape]);
+
+  const handleSelectHand = (hand: HandChoice) => {
+    setDrawingHand(hand);
+    startGame();
+  }
 
   // Countdown logic
   useEffect(() => {
@@ -202,15 +209,26 @@ export default function SketchAndScoreClient() {
 
   // Main gesture detection logic
   useEffect(() => {
-    if (!landmarks.length || isHandTrackingLoading || gameState === 'SUBMITTING' || gameState === 'FEEDBACK') {
+    if (!landmarks.length || isHandTrackingLoading || !drawingHand || !['GET_READY', 'COUNTDOWN', 'DRAWING'].includes(gameState)) {
         if (landmarks.length === 0) {
-            // Reset last finger count if no hands are detected
             lastSecondaryFingers.current = 0;
         }
         return;
-    };
+    }
 
-    let totalFingers = landmarks.reduce((acc, hand) => acc + countFingersForHand(hand), 0);
+    let drawingHandLandmarks: any[] | null = null;
+    let gestureHandLandmarks: any[] | null = null;
+
+    // Assign hands based on user's choice and handedness detection
+    for(let i=0; i<handedness.length; i++) {
+      if (handedness[i][0].categoryName === drawingHand) {
+        drawingHandLandmarks = landmarks[i];
+      } else {
+        gestureHandLandmarks = landmarks[i];
+      }
+    }
+    
+    const totalFingers = (drawingHandLandmarks ? countFingersForHand(drawingHandLandmarks) : 0) + (gestureHandLandmarks ? countFingersForHand(gestureHandLandmarks) : 0);
 
     if (gameState === 'GET_READY' && totalFingers === 10) {
         setCountdown(COUNTDOWN_SECONDS);
@@ -219,84 +237,72 @@ export default function SketchAndScoreClient() {
     }
 
     if (gameState === 'DRAWING') {
-        if (totalFingers >= 10) {
-            clearCanvas();
-            lastPosition.current = null;
-            toast({ title: "Canvas Cleared!" });
-            return;
-        }
-        
-        let primaryHand: any[] | null = null;
-        let secondaryHand: any[] | null = null;
-        
-        const pointingHandIndex = landmarks.findIndex(isPointing);
-
-        if (pointingHandIndex !== -1) {
-            primaryHand = landmarks[pointingHandIndex];
-            secondaryHand = landmarks[1 - pointingHandIndex]; // The other hand
-        } else {
-            // No hand is pointing, reset drawing position and gesture memory
-            lastPosition.current = null;
-            lastSecondaryFingers.current = 0; 
-            return;
-        }
-
-        // Process gestures from the secondary hand
-        const secondaryFingers = secondaryHand ? countFingersForHand(secondaryHand) : 0;
-        
-        // Only process gesture if the finger count has changed to prevent flickering
-        if (secondaryFingers !== lastSecondaryFingers.current) {
-             if (secondaryFingers === 5) {
+      // Clear canvas gesture (10 fingers)
+      if (totalFingers >= 10) {
+        clearCanvas();
+        lastPosition.current = null;
+        toast({ title: "Canvas Cleared!" });
+        return;
+      }
+      
+      // Handle tool switching with gesture hand
+      if (gestureHandLandmarks) {
+        const gestureHandFingers = countFingersForHand(gestureHandLandmarks);
+        if (gestureHandFingers !== lastSecondaryFingers.current) {
+            if (gestureHandFingers === 5) {
                 if(drawingTool !== 'ERASER') {
                   setDrawingTool('ERASER');
                   toast({title: "Eraser activated!"});
                 }
-            } else if (secondaryFingers === 4) {
+            } else if (gestureHandFingers === 4) {
                  if(drawingTool !== 'PENCIL') {
                   setDrawingTool('PENCIL');
                   toast({title: "Pencil activated!"});
                 }
             }
         }
-        lastSecondaryFingers.current = secondaryFingers;
+        lastSecondaryFingers.current = gestureHandFingers;
+      } else {
+        lastSecondaryFingers.current = 0;
+      }
 
-        // Handle drawing with primary hand
-        if (primaryHand) {
-            const indexTip = primaryHand[8];
-            const ctx = getDrawingContext();
-            
-            if (drawingCanvasRef.current && indexTip && ctx) {
-                const canvas = drawingCanvasRef.current;
-                const x = (1 - indexTip.x) * canvas.width;
-                const y = indexTip.y * canvas.height;
+      // Handle drawing with drawing hand
+      if (drawingHandLandmarks && isPointing(drawingHandLandmarks)) {
+        const indexTip = drawingHandLandmarks[8];
+        const ctx = getDrawingContext();
+        
+        if (drawingCanvasRef.current && indexTip && ctx) {
+            const canvas = drawingCanvasRef.current;
+            const x = (1 - indexTip.x) * canvas.width;
+            const y = indexTip.y * canvas.height;
 
-                if (drawingTool === 'PENCIL') {
-                    ctx.globalCompositeOperation = 'source-over';
-                    ctx.strokeStyle = 'black';
-                    ctx.lineWidth = 5;
-                } else { // ERASER
-                    ctx.globalCompositeOperation = 'destination-out';
-                    ctx.lineWidth = 25;
-                }
-                
-                ctx.beginPath();
-                ctx.lineCap = 'round';
-                ctx.lineJoin = 'round';
-
-                if (lastPosition.current) {
-                    ctx.moveTo(lastPosition.current.x, lastPosition.current.y);
-                } else {
-                    ctx.moveTo(x, y);
-                }
-                ctx.lineTo(x, y);
-                ctx.stroke();
-                lastPosition.current = { x, y };
+            if (drawingTool === 'PENCIL') {
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 5;
+            } else { // ERASER
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.lineWidth = 25;
             }
-        } else {
-            lastPosition.current = null;
+            
+            ctx.beginPath();
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            if (lastPosition.current) {
+                ctx.moveTo(lastPosition.current.x, lastPosition.current.y);
+            } else {
+                ctx.moveTo(x, y);
+            }
+            ctx.lineTo(x, y);
+            ctx.stroke();
+            lastPosition.current = { x, y };
         }
+      } else {
+          lastPosition.current = null;
+      }
     }
-}, [landmarks, handedness, gameState, drawingTool, clearCanvas, toast, getDrawingContext, isHandTrackingLoading]);
+}, [landmarks, handedness, gameState, drawingTool, clearCanvas, toast, getDrawingContext, isHandTrackingLoading, drawingHand]);
   
   
   // Keep drawing canvas size in sync with video
@@ -306,11 +312,11 @@ export default function SketchAndScoreClient() {
     if (!video || !drawingCanvas) return;
 
     const updateSize = () => {
-        const { videoWidth, videoHeight } = video;
-        if (videoWidth > 0 && videoHeight > 0) {
-            if (drawingCanvas.width !== videoWidth || drawingCanvas.height !== videoHeight) {
-                drawingCanvas.width = videoWidth;
-                drawingCanvas.height = videoHeight;
+        const { clientWidth, clientHeight } = video;
+        if (clientWidth > 0 && clientHeight > 0) {
+            if (drawingCanvas.width !== clientWidth || drawingCanvas.height !== clientHeight) {
+                drawingCanvas.width = clientWidth;
+                drawingCanvas.height = clientHeight;
             }
         }
     };
@@ -322,35 +328,40 @@ export default function SketchAndScoreClient() {
         video.addEventListener('loadeddata', updateSize, { once: true });
     }
     
+    const resizeObserver = new ResizeObserver(updateSize);
+    resizeObserver.observe(video);
+
     return () => {
       if (video) {
         video.removeEventListener('loadeddata', updateSize);
       }
+      resizeObserver.disconnect();
     };
   }, [videoRef, drawingCanvasRef, gameState]);
 
 
   const renderContent = () => {
     if (gameState === 'IDLE') {
-      return (
-        <div className="flex items-center justify-center h-full">
-            <Card className="max-w-xl text-center p-8">
-                <CardHeader>
-                    <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 text-primary">
-                        <Pencil className="h-10 w-10" />
-                    </div>
-                    <CardTitle className="font-headline text-4xl">Sketch & Score</CardTitle>
-                    <CardDescription className="text-lg text-muted-foreground pt-2">
-                        Draw the shape on screen using your index finger. Use gestures to control your tools and submit your masterpiece to the AI judge!
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <Button onClick={startGame} size="lg" className="font-headline text-xl">Start Drawing</Button>
-                </CardContent>
-            </Card>
-        </div>
-      );
-    }
+        return (
+          <div className="flex items-center justify-center h-full">
+              <Card className="max-w-xl text-center p-8">
+                  <CardHeader>
+                      <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 text-primary">
+                          <Pencil className="h-10 w-10" />
+                      </div>
+                      <CardTitle className="font-headline text-4xl">Sketch & Score</CardTitle>
+                      <CardDescription className="text-lg text-muted-foreground pt-2">
+                          Which hand will you use to draw?
+                      </CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex justify-center gap-4">
+                      <Button onClick={() => handleSelectHand('Left')} size="lg" className="font-headline text-xl">Left Hand</Button>
+                      <Button onClick={() => handleSelectHand('Right')} size="lg" className="font-headline text-xl">Right Hand</Button>
+                  </CardContent>
+              </Card>
+          </div>
+        );
+      }
     
     return (
         <>
