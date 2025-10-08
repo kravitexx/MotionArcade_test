@@ -146,55 +146,47 @@ export default function MathChallengeClient() {
   useEffect(() => {
     const canvas = canvasRef.current;
     const video = videoRef.current;
-    if (!canvas || !video || !landmarks.length) {
-      const ctx = canvas?.getContext('2d');
-      ctx?.clearRect(0, 0, canvas.width, canvas.height);
-      return;
-    };
+    if (!canvas || !video) return;
     
-    // Ensure canvas is the same size as the video feed
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Match canvas size to video display size
     if (canvas.width !== video.clientWidth || canvas.height !== video.clientHeight) {
       canvas.width = video.clientWidth;
       canvas.height = video.clientHeight;
     }
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
+    
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (['PLAYING', 'HOLDING'].includes(gameState)) {
+    if (landmarks.length > 0 && ['PLAYING', 'HOLDING'].includes(gameState)) {
       const primaryHand = landmarks[0];
-      const wrist = primaryHand[0];
+      const wrist = primaryHand[0]; // Wrist landmark
       if (!wrist) return;
-      
+
       const x = (1 - wrist.x) * canvas.width;
       const y = wrist.y * canvas.height;
-
+      
       // Draw circle
       ctx.beginPath();
       ctx.arc(x, y - 40, 30, 0, 2 * Math.PI);
       ctx.fillStyle = 'rgba(128, 90, 213, 0.8)'; // Primary color with opacity
       ctx.fill();
 
-      // Save the context state before transforming it for the text
+      // Save context, translate to text position, scale to un-mirror, draw, and restore
       ctx.save();
-      // Translate to the point where we want to draw the text
       ctx.translate(x, y - 40);
-      // The video is mirrored, so we un-mirror the text by flipping it back
       ctx.scale(-1, 1);
       
-      // Draw text
       ctx.fillStyle = 'white';
       ctx.font = 'bold 32px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(detectedFingers.toString(), 0, 0); // Draw at the new origin (0,0)
+      ctx.fillText(detectedFingers.toString(), 0, 0);
 
-      // Restore the context to its original state for the next frame
       ctx.restore();
     }
-  }, [landmarks, detectedFingers, gameState]);
+  }, [landmarks, detectedFingers, gameState, videoRef.current?.clientWidth, videoRef.current?.clientHeight]);
 
 
   const renderGameState = () => {
