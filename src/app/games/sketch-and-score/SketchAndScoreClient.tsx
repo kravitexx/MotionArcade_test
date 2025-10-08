@@ -27,7 +27,7 @@ const shapeIcons: Record<string, React.ReactNode> = {
 
 
 export default function SketchAndScoreClient() {
-  const { videoRef, landmarks, handedness, startVideo, stopVideo, isLoading: isHandTrackingLoading, error: handTrackingError } = useHandTracking();
+  const { videoRef, landmarks, handedness, startVideo, stopVideo, isLoading: isHandTrackingLoading, error: handTrackingError, detectedFingers } = useHandTracking();
   const drawingCanvasRef = useRef<HTMLCanvasElement>(null);
   const lastPosition = useRef<{ x: number, y: number } | null>(null);
   const lastSecondaryFingers = useRef<number>(0);
@@ -127,7 +127,7 @@ export default function SketchAndScoreClient() {
     tempCanvas.width = sourceCanvas.width;
     tempCanvas.height = sourceCanvas.height;
 
-    // Fill with a white background
+    // Fill with a white background to handle transparency
     tempCtx.fillStyle = '#FFFFFF';
     tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
     
@@ -160,35 +160,6 @@ export default function SketchAndScoreClient() {
     lastPosition.current = null;
     fetchNewShape();
   }
-
-  // Helper to count fingers for a single hand
-  const countFingersForHand = (handLandmarks: any[]): number => {
-    if (!handLandmarks || handLandmarks.length < 21) return 0;
-    
-    const tipIds = [4, 8, 12, 16, 20];
-    const pipIds = [2, 6, 10, 14, 18];
-    
-    let raisedFingers = 0;
-
-    // Thumb: Check if tip is "above" the MCP joint relative to the palm
-    // A simple x-check can be more stable for thumb than y-check
-    const hand = handedness.find(h => h[0].categoryName === 'Right') ? 'Right' : 'Left';
-    if(hand === 'Right'){
-      if (handLandmarks[tipIds[0]].x < handLandmarks[tipIds[0] - 1].x) raisedFingers++;
-    } else {
-      if (handLandmarks[tipIds[0]].x > handLandmarks[tipIds[0] - 1].x) raisedFingers++;
-    }
-
-
-    // Fingers: Check if tip is above the PIP joint
-    for (let i = 1; i < 5; i++) {
-      if (handLandmarks[tipIds[i]].y < handLandmarks[pipIds[i]].y) {
-        raisedFingers++;
-      }
-    }
-
-    return raisedFingers;
-  };
   
   const isPointing = (handLandmarks: any[]): boolean => {
       if (!handLandmarks || handLandmarks.length < 21) return false;
@@ -216,6 +187,21 @@ export default function SketchAndScoreClient() {
         return;
     }
 
+    if (gameState === 'GET_READY' && detectedFingers === 10) {
+        setCountdown(COUNTDOWN_SECONDS);
+        setGameState('COUNTDOWN');
+        return;
+    }
+    
+    // During drawing, prioritize the 10-finger clear gesture
+    if (gameState === 'DRAWING' && detectedFingers === 10) {
+        clearCanvas();
+        lastPosition.current = null;
+        toast({ title: "Canvas Cleared!" });
+        return; // Important: Stop processing further gestures
+    }
+
+
     let drawingHandLandmarks: any[] | null = null;
     let gestureHandLandmarks: any[] | null = null;
 
@@ -228,26 +214,29 @@ export default function SketchAndScoreClient() {
       }
     }
     
-    const totalFingers = (drawingHandLandmarks ? countFingersForHand(drawingHandLandmarks) : 0) + (gestureHandLandmarks ? countFingersForHand(gestureHandLandmarks) : 0);
-
-    if (gameState === 'GET_READY' && totalFingers === 10) {
-        setCountdown(COUNTDOWN_SECONDS);
-        setGameState('COUNTDOWN');
-        return;
-    }
-
     if (gameState === 'DRAWING') {
-      // Clear canvas gesture (10 fingers)
-      if (totalFingers >= 10) {
-        clearCanvas();
-        lastPosition.current = null;
-        toast({ title: "Canvas Cleared!" });
-        return;
-      }
-      
       // Handle tool switching with gesture hand
       if (gestureHandLandmarks) {
-        const gestureHandFingers = countFingersForHand(gestureHandLandmarks);
+        let gestureHandFingers = 0;
+        const handIndex = landmarks.indexOf(gestureHandLandmarks);
+        if (handIndex !== -1) {
+            // This logic is a bit simplified, ideally you'd have a more robust single-hand finger counter
+            const tipIds = [8, 12, 16, 20]; // index, middle, ring, pinky
+            const pipIds = [6, 10, 14, 18];
+            let raisedFingers = 0;
+            // Simple finger check (tip higher than pip)
+            for(let i = 0; i < tipIds.length; i++) {
+                if(gestureHandLandmarks[tipIds[i]].y < gestureHandLandmarks[pipIds[i]].y) {
+                    raisedFingers++;
+                }
+            }
+            // Simple thumb check (tip further from wrist on x-axis than MCP)
+            if(Math.abs(gestureHandLandmarks[4].x - gestureHandLandmarks[0].x) > Math.abs(gestureHandLandmarks[2].x - gestureHandLandmarks[0].x)) {
+               raisedFingers++;
+            }
+            gestureHandFingers = raisedFingers;
+        }
+
         if (gestureHandFingers !== lastSecondaryFingers.current) {
             if (gestureHandFingers === 5) {
                 if(drawingTool !== 'ERASER') {
@@ -273,7 +262,7 @@ export default function SketchAndScoreClient() {
         
         if (drawingCanvasRef.current && indexTip && ctx) {
             const canvas = drawingCanvasRef.current;
-            const x = (1 - indexTip.x) * canvas.width;
+            const x = indexTip.x * canvas.width;
             const y = indexTip.y * canvas.height;
 
             if (drawingTool === 'PENCIL') {
@@ -302,7 +291,7 @@ export default function SketchAndScoreClient() {
           lastPosition.current = null;
       }
     }
-}, [landmarks, handedness, gameState, drawingTool, clearCanvas, toast, getDrawingContext, isHandTrackingLoading, drawingHand]);
+}, [landmarks, handedness, gameState, drawingTool, clearCanvas, toast, getDrawingContext, isHandTrackingLoading, drawingHand, detectedFingers]);
   
   
   // Keep drawing canvas size in sync with video
@@ -365,8 +354,8 @@ export default function SketchAndScoreClient() {
     
     return (
         <>
-            {/* These elements are now always rendered after IDLE state */}
-            <video ref={videoRef} autoPlay playsInline muted className="absolute top-0 left-0 w-full h-full object-cover scale-x-[-1]"></video>
+            {/* The video is now flipped via CSS to feel more natural */}
+            <video ref={videoRef} autoPlay playsInline muted className="absolute top-0 left-0 w-full h-full object-cover transform -scale-x-100"></video>
             <canvas ref={drawingCanvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
 
             {(isHandTrackingLoading || gameState === 'LOADING_CAMERA') && (
