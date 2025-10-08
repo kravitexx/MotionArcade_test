@@ -31,6 +31,7 @@ const shapeIcons: Record<string, React.ReactNode> = {
 export default function SketchAndScoreClient() {
   const { videoRef, landmarks, handedness, startVideo, stopVideo, isLoading: isHandTrackingLoading, error: handTrackingError, detectedFingers } = useHandTracking();
   const drawingCanvasRef = useRef<HTMLCanvasElement>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement>(null); // Canvas for UI overlays
   const lastPosition = useRef<{ x: number, y: number } | null>(null);
   const midPointRef = useRef<{ x: number, y: number } | null>(null);
   
@@ -46,6 +47,8 @@ export default function SketchAndScoreClient() {
   const [eraserSize, setEraserSize] = useState(25);
 
   const getDrawingContext = useCallback(() => drawingCanvasRef.current?.getContext('2d'), []);
+  const getOverlayContext = useCallback(() => overlayCanvasRef.current?.getContext('2d'), []);
+
 
   useEffect(() => {
     if (handTrackingError) {
@@ -168,18 +171,29 @@ export default function SketchAndScoreClient() {
   const isPointing = (handLandmarks: any[]): boolean => {
       if (!handLandmarks || handLandmarks.length < 21) return false;
 
-      const tipIds = { index: 8, middle: 12, ring: 16, pinky: 20 };
-      const pipIds = { index: 6, middle: 10, ring: 14, pinky: 18 };
+      // Check if index finger is extended
+      const indexAngle = getAngle(handLandmarks[5], handLandmarks[6], handLandmarks[8]);
+      const indexFingerExtended = indexAngle > 160;
 
-      // Check if index finger is extended (tip is above pip)
-      const indexFingerExtended = handLandmarks[tipIds.index].y < handLandmarks[pipIds.index].y;
+      // Check if other fingers are curled
+      const middleAngle = getAngle(handLandmarks[9], handLandmarks[10], handLandmarks[12]);
+      const ringAngle = getAngle(handLandmarks[13], handLandmarks[14], handLandmarks[16]);
+      const pinkyAngle = getAngle(handLandmarks[17], handLandmarks[18], handLandmarks[20]);
 
-      // Check if other fingers (middle, ring, pinky) are curled (tip is below pip)
-      const middleFingerCurled = handLandmarks[tipIds.middle].y > handLandmarks[pipIds.middle].y;
-      const ringFingerCurled = handLandmarks[tipIds.ring].y > handLandmarks[pipIds.ring].y;
-      const pinkyFingerCurled = handLandmarks[tipIds.pinky].y > handLandmarks[pipIds.pinky].y;
+      const middleFingerCurled = middleAngle < 100;
+      const ringFingerCurled = ringAngle < 100;
+      const pinkyFingerCurled = pinkyAngle < 100;
 
       return indexFingerExtended && middleFingerCurled && ringFingerCurled && pinkyFingerCurled;
+  };
+
+  const getAngle = (a: any, b: any, c: any) => {
+    const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
+    let angle = Math.abs(radians * 180.0 / Math.PI);
+    if (angle > 180.0) {
+      angle = 360 - angle;
+    }
+    return angle;
   };
   
   const isPinching = (handLandmarks: any[]): boolean => {
@@ -199,6 +213,11 @@ export default function SketchAndScoreClient() {
   useEffect(() => {
     if (!landmarks.length || isHandTrackingLoading || !drawingHand || !['GET_READY', 'COUNTDOWN', 'DRAWING'].includes(gameState)) {
         return;
+    }
+
+    const overlayCtx = getOverlayContext();
+    if(overlayCtx && overlayCanvasRef.current){
+      overlayCtx.clearRect(0, 0, overlayCanvasRef.current.width, overlayCanvasRef.current.height);
     }
     
     // Prioritize the 10-finger clear gesture
@@ -249,39 +268,39 @@ export default function SketchAndScoreClient() {
                     setDrawingTool(currentTool);
                 }
                 
-                const ctx = getDrawingContext();
-                if (drawingCanvasRef.current && ctx) {
+                const drawingCtx = getDrawingContext();
+                if (drawingCanvasRef.current && drawingCtx) {
                     const canvas = drawingCanvasRef.current;
                     const x = activeLandmark.x * canvas.width;
                     const y = activeLandmark.y * canvas.height;
                     const mirroredX = canvas.width - x;
 
                     if (currentTool === 'PENCIL') {
-                        ctx.globalCompositeOperation = 'source-over';
-                        ctx.strokeStyle = 'black';
-                        ctx.lineWidth = 5;
+                        drawingCtx.globalCompositeOperation = 'source-over';
+                        drawingCtx.strokeStyle = 'black';
+                        drawingCtx.lineWidth = 5;
                     } else { // ERASER
-                        ctx.globalCompositeOperation = 'destination-out';
-                        ctx.lineWidth = eraserSize;
+                        drawingCtx.globalCompositeOperation = 'destination-out';
+                        drawingCtx.lineWidth = eraserSize;
                     }
                     
-                    ctx.lineCap = 'round';
-                    ctx.lineJoin = 'round';
+                    drawingCtx.lineCap = 'round';
+                    drawingCtx.lineJoin = 'round';
                     
                     if (lastPosition.current) {
                         const midPoint = {
                             x: (lastPosition.current.x + mirroredX) / 2,
                             y: (lastPosition.current.y + y) / 2
                         };
-                        ctx.beginPath();
-                        ctx.moveTo(midPointRef.current?.x ?? lastPosition.current.x, midPointRef.current?.y ?? lastPosition.current.y);
-                        ctx.quadraticCurveTo(lastPosition.current.x, lastPosition.current.y, midPoint.x, midPoint.y);
-                        ctx.stroke();
+                        drawingCtx.beginPath();
+                        drawingCtx.moveTo(midPointRef.current?.x ?? lastPosition.current.x, midPointRef.current?.y ?? lastPosition.current.y);
+                        drawingCtx.quadraticCurveTo(lastPosition.current.x, lastPosition.current.y, midPoint.x, midPoint.y);
+                        drawingCtx.stroke();
                         midPointRef.current = midPoint;
                     } else {
-                      ctx.beginPath();
-                      ctx.arc(mirroredX, y, ctx.lineWidth / 2, 0, Math.PI * 2);
-                      ctx.fill();
+                      drawingCtx.beginPath();
+                      drawingCtx.arc(mirroredX, y, drawingCtx.lineWidth / 2, 0, Math.PI * 2);
+                      drawingCtx.fill();
                     }
                     lastPosition.current = { x: mirroredX, y };
                 }
@@ -302,46 +321,64 @@ export default function SketchAndScoreClient() {
             Math.pow(thumbTip.y - indexTip.y, 2)
           );
 
-          // Map distance to size (e.g. distance from 0.0 to 0.3)
           const newSize = MIN_ERASER_SIZE + (distance / 0.3) * (MAX_ERASER_SIZE - MIN_ERASER_SIZE);
           setEraserSize(Math.max(MIN_ERASER_SIZE, Math.min(MAX_ERASER_SIZE, newSize)));
 
-          // Draw eraser size indicator
-          const ctx = getDrawingContext();
-          if (ctx) {
-            const canvas = ctx.canvas;
+          // Draw eraser size indicator on the overlay canvas
+          if (overlayCtx && overlayCanvasRef.current) {
+            const canvas = overlayCanvasRef.current;
+            // Use the thumb position of the gesture hand
             const x = (1 - thumbTip.x) * canvas.width;
             const y = thumbTip.y * canvas.height;
-            
-            ctx.font = '20px sans-serif';
-            ctx.fillStyle = 'black';
-            ctx.fillText(`Eraser size = ${Math.round(eraserSize)}`, x - 120, y);
+
+            overlayCtx.save();
+            overlayCtx.globalAlpha = 0.5;
+            overlayCtx.fillStyle = 'white';
+            overlayCtx.strokeStyle = 'black';
+            overlayCtx.lineWidth = 2;
+
+            // Draw circle indicator
+            overlayCtx.beginPath();
+            overlayCtx.arc(x, y, eraserSize / 2, 0, Math.PI * 2);
+            overlayCtx.fill();
+            overlayCtx.stroke();
+
+            // Draw size text
+            overlayCtx.globalAlpha = 1.0;
+            overlayCtx.fillStyle = 'black';
+            overlayCtx.font = 'bold 16px sans-serif';
+            overlayCtx.textAlign = 'center';
+            overlayCtx.textBaseline = 'middle';
+            overlayCtx.fillText(Math.round(eraserSize).toString(), x, y);
+            overlayCtx.restore();
           }
         }
     } else {
         lastPosition.current = null;
         midPointRef.current = null;
     }
-}, [landmarks, handedness, gameState, drawingTool, clearCanvas, toast, getDrawingContext, isHandTrackingLoading, drawingHand, detectedFingers, eraserSize]);
+}, [landmarks, handedness, gameState, drawingTool, clearCanvas, toast, getDrawingContext, getOverlayContext, isHandTrackingLoading, drawingHand, detectedFingers, eraserSize]);
 
 
-  // Keep drawing canvas size in sync with video
+  // Keep canvas sizes in sync with video
   useEffect(() => {
     const video = videoRef.current;
-    const drawingCanvas = drawingCanvasRef.current;
-    if (!video || !drawingCanvas) return;
+    if (!video) return;
+
+    const canvases = [drawingCanvasRef.current, overlayCanvasRef.current];
 
     const updateSize = () => {
         const { clientWidth, clientHeight } = video;
         if (clientWidth > 0 && clientHeight > 0) {
-            if (drawingCanvas.width !== clientWidth || drawingCanvas.height !== clientHeight) {
-                drawingCanvas.width = clientWidth;
-                drawingCanvas.height = clientHeight;
-            }
+            canvases.forEach(canvas => {
+                if (canvas && (canvas.width !== clientWidth || canvas.height !== clientHeight)) {
+                    canvas.width = clientWidth;
+                    canvas.height = clientHeight;
+                }
+            });
         }
     };
     
-    // Check if video is ready, otherwise wait for the loadeddata event
     if (video.readyState >= 2) { // HAVE_CURRENT_DATA
         updateSize();
     } else {
@@ -357,7 +394,7 @@ export default function SketchAndScoreClient() {
       }
       resizeObserver.disconnect();
     };
-  }, [videoRef, drawingCanvasRef, gameState]);
+  }, [videoRef, drawingCanvasRef, overlayCanvasRef, gameState]);
 
 
   const renderContent = () => {
@@ -386,7 +423,9 @@ export default function SketchAndScoreClient() {
     return (
         <>
             <video ref={videoRef} autoPlay playsInline muted className="absolute top-0 left-0 w-full h-full object-cover scale-x-[-1]"></video>
-            <canvas ref={drawingCanvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
+            <canvas ref={drawingCanvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-80"></canvas>
+            <canvas ref={overlayCanvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
+
 
             {(isHandTrackingLoading || gameState === 'LOADING_CAMERA') && (
               <div className="absolute inset-0 bg-black/60 flex flex-col gap-4 items-center justify-center rounded-lg text-white z-30">
