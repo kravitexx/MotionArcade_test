@@ -21,12 +21,13 @@ const FEEDBACK_DURATION = 2000;
 const PROBLEM_TIMER_SECONDS = 20;
 
 export default function MathChallenge2Client() {
-  const { videoRef, canvasRef, landmarks, startVideo, stopVideo, isLoading: isHandTrackingLoading, error: handTrackingError } = useHandTracking();
+  const { videoRef, landmarks, startVideo, stopVideo, isLoading: isHandTrackingLoading, error: handTrackingError } = useHandTracking();
   const { toast, dismiss } = useToast();
   const toastIdRef = useRef<string | null>(null);
   const isMobile = useIsMobile();
   const popAudioRef = useRef<HTMLAudioElement | null>(null);
   const bubbleRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const videoContainerRef = useRef<HTMLDivElement | null>(null);
 
 
   const [gameState, setGameState] = useState<GameState>('IDLE');
@@ -134,9 +135,9 @@ export default function MathChallenge2Client() {
 
   // Bubble popping logic
   useEffect(() => {
-    if (gameState !== 'PLAYING' || !landmarks.length || !canvasRef.current) return;
+    if (gameState !== 'PLAYING' || !landmarks.length || !videoContainerRef.current) return;
     
-    const canvas = canvasRef.current;
+    const videoContainer = videoContainerRef.current;
     
     // Index finger tip is landmark 8
     const indexTip = landmarks[0][8]; 
@@ -144,10 +145,10 @@ export default function MathChallenge2Client() {
 
     // The landmarks are normalized (0-1). We need to convert them to absolute
     // coordinates on the page.
-    const canvasRect = canvas.getBoundingClientRect();
+    const videoRect = videoContainer.getBoundingClientRect();
     // The video is mirrored, so we flip the x-coordinate.
-    const tipX = canvasRect.left + (1 - indexTip.x) * canvasRect.width;
-    const tipY = canvasRect.top + indexTip.y * canvasRect.height;
+    const tipX = videoRect.left + (1 - indexTip.x) * videoRect.width;
+    const tipY = videoRect.top + indexTip.y * videoRect.height;
 
 
     bubbleRefs.current.forEach((bubbleDiv, index) => {
@@ -181,7 +182,7 @@ export default function MathChallenge2Client() {
         }
     });
 
-  }, [landmarks, gameState, bubbles, currentProblem, handleAnswer, canvasRef]);
+  }, [landmarks, gameState, bubbles, currentProblem, handleAnswer]);
 
 
   const renderGameState = () => {
@@ -211,10 +212,9 @@ export default function MathChallenge2Client() {
 
     return (
       <div className="w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-        <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-muted shadow-lg lg:col-span-2">
+        <div ref={videoContainerRef} className="relative w-full aspect-video rounded-lg overflow-hidden bg-muted shadow-lg lg:col-span-2">
           <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]"></video>
-          <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full"></canvas>
-
+          
           {gameState === 'PLAYING' && (
              <div className="absolute top-0 left-0 w-full h-full flex justify-around items-center pt-4 px-4">
               {bubbles.map((bubble, index) => (
@@ -241,7 +241,7 @@ export default function MathChallenge2Client() {
             </div>
           )}
         
-          {gameState === 'PLAYING' && landmarks.length > 0 && landmarks[0][8] && canvasRef.current && (
+          {gameState === 'PLAYING' && landmarks.length > 0 && landmarks[0][8] && videoRef.current && (
              <Target className="absolute text-cyan-400" style={{
                 left: `${(1-landmarks[0][8].x) * 100}%`,
                 top: `${landmarks[0][8].y * 100}%`,

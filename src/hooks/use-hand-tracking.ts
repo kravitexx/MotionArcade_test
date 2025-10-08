@@ -7,7 +7,6 @@ import { useIsMobile } from './use-mobile';
 
 type HandTrackingHook = {
   videoRef: React.RefObject<HTMLVideoElement>;
-  canvasRef: React.RefObject<HTMLCanvasElement>;
   detectedFingers: number;
   startVideo: () => Promise<void>;
   stopVideo: () => void;
@@ -21,7 +20,6 @@ import { countFingers } from '@/lib/finger-counting';
 
 export function useHandTracking(): HandTrackingHook {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef<number>();
   const handLandmarkerRef = useRef<HandLandmarker | null>(null);
   const isMobile = useIsMobile();
@@ -152,5 +150,5 @@ export function useHandTracking(): HandTrackingHook {
   }, [stopVideo]);
 
 
-  return { videoRef, canvasRef, detectedFingers, startVideo, stopVideo, isLoading, error, handedness, landmarks };
+  return { videoRef, detectedFingers, startVideo, stopVideo, isLoading, error, handedness, landmarks };
 }

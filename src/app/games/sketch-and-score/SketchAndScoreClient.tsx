@@ -26,7 +26,7 @@ const shapeIcons: Record<string, React.ReactNode> = {
 
 
 export default function SketchAndScoreClient() {
-  const { videoRef, canvasRef: handCanvasRef, landmarks, handedness, startVideo, stopVideo, isLoading: isHandTrackingLoading, error: handTrackingError } = useHandTracking();
+  const { videoRef, landmarks, handedness, startVideo, stopVideo, isLoading: isHandTrackingLoading, error: handTrackingError } = useHandTracking();
   const drawingCanvasRef = useRef<HTMLCanvasElement>(null);
   const lastPosition = useRef<{ x: number, y: number } | null>(null);
   const lastSecondaryFingers = useRef<number>(0);
@@ -356,7 +356,6 @@ export default function SketchAndScoreClient() {
         <>
             {/* These elements are now always rendered after IDLE state */}
             <video ref={videoRef} autoPlay playsInline muted className="absolute top-0 left-0 w-full h-full object-cover scale-x-[-1]"></video>
-            <canvas ref={handCanvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
             <canvas ref={drawingCanvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
 
             {(isHandTrackingLoading || gameState === 'LOADING_CAMERA') && (
@@ -428,5 +427,3 @@ export default function SketchAndScoreClient() {
     </div>
   );
 }
-
-    
