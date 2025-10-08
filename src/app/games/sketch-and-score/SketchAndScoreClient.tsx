@@ -203,7 +203,7 @@ export default function SketchAndScoreClient() {
     const distance = Math.sqrt(
         Math.pow(thumbTip.x - indexTip.x, 2) +
         Math.pow(thumbTip.y - indexTip.y, 2) +
-        Math.pow(thumbTip.z - indexTip.z, 2)
+        Math.pow((thumbTip.z || 0) - (indexTip.z || 0), 2)
     );
     // This threshold may need adjustment
     return distance < 0.05; 
@@ -327,9 +327,9 @@ export default function SketchAndScoreClient() {
           // Draw eraser size indicator on the overlay canvas
           if (overlayCtx && overlayCanvasRef.current) {
             const canvas = overlayCanvasRef.current;
-            // Use the thumb position of the gesture hand
-            const x = (1 - thumbTip.x) * canvas.width;
-            const y = thumbTip.y * canvas.height;
+            // Calculate midpoint between thumb and index finger
+            const midX = (1 - (thumbTip.x + indexTip.x) / 2) * canvas.width;
+            const midY = ((thumbTip.y + indexTip.y) / 2) * canvas.height;
 
             overlayCtx.save();
             overlayCtx.globalAlpha = 0.5;
@@ -339,7 +339,7 @@ export default function SketchAndScoreClient() {
 
             // Draw circle indicator
             overlayCtx.beginPath();
-            overlayCtx.arc(x, y, eraserSize / 2, 0, Math.PI * 2);
+            overlayCtx.arc(midX, midY, eraserSize / 2, 0, Math.PI * 2);
             overlayCtx.fill();
             overlayCtx.stroke();
 
@@ -349,7 +349,7 @@ export default function SketchAndScoreClient() {
             overlayCtx.font = 'bold 16px sans-serif';
             overlayCtx.textAlign = 'center';
             overlayCtx.textBaseline = 'middle';
-            overlayCtx.fillText(Math.round(eraserSize).toString(), x, y);
+            overlayCtx.fillText(Math.round(eraserSize).toString(), midX, midY);
             overlayCtx.restore();
           }
         }
@@ -357,7 +357,7 @@ export default function SketchAndScoreClient() {
         lastPosition.current = null;
         midPointRef.current = null;
     }
-}, [landmarks, handedness, gameState, drawingTool, clearCanvas, toast, getDrawingContext, getOverlayContext, isHandTrackingLoading, drawingHand, detectedFingers, eraserSize]);
+  }, [landmarks, handedness, gameState, drawingTool, clearCanvas, toast, getDrawingContext, getOverlayContext, isHandTrackingLoading, drawingHand, detectedFingers, eraserSize]);
 
 
   // Keep canvas sizes in sync with video
