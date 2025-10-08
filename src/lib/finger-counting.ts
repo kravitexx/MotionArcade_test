@@ -44,27 +44,27 @@ export function countFingers(landmarks: Landmark[][], handedness: Handedness[]):
     const handLandmarks = landmarks[i];
     let raisedFingers = 0;
 
-    // Check if fingers are straight based on y-coordinate
-    // A finger is considered "up" if its tip is above its PIP joint
-    if (handLandmarks[INDEX_FINGER_TIP].y < handLandmarks[INDEX_FINGER_PIP].y) raisedFingers++;
-    if (handLandmarks[MIDDLE_FINGER_TIP].y < handLandmarks[MIDDLE_FINGER_PIP].y) raisedFingers++;
-    if (handLandmarks[RING_FINGER_TIP].y < handLandmarks[RING_FINGER_PIP].y) raisedFingers++;
-    if (handLandmarks[PINKY_TIP].y < handLandmarks[PINKY_PIP].y) raisedFingers++;
+    // Check fingers based on joint angles
+    const fingerJoints = [
+        [INDEX_FINGER_MCP, INDEX_FINGER_PIP, INDEX_FINGER_TIP],
+        [MIDDLE_FINGER_MCP, MIDDLE_FINGER_PIP, MIDDLE_FINGER_TIP],
+        [RING_FINGER_MCP, RING_FINGER_PIP, RING_FINGER_TIP],
+        [PINKY_MCP, PINKY_PIP, PINKY_TIP]
+    ];
 
-    // Thumb logic: A more robust check for thumb "up"
-    // We check if the thumb tip is further out from the hand center than the MCP joint.
-    // This handles both palm-facing and back-facing hands better.
-    const hand = handedness[i][0].categoryName;
-    if (hand === 'Right') {
-      // For the right hand, the thumb is up if its tip's X is less than the MCP joint's X
-      if (handLandmarks[THUMB_TIP].x < handLandmarks[THUMB_MCP].x) {
+    for (const joint of fingerJoints) {
+        const angle = getAngle(handLandmarks[joint[0]], handLandmarks[joint[1]], handLandmarks[joint[2]]);
+        // If the angle is > 160, the finger is likely straight
+        if (angle > 160) {
+            raisedFingers++;
+        }
+    }
+    
+    // Thumb logic based on angle
+    const thumbAngle = getAngle(handLandmarks[THUMB_CMC], handLandmarks[THUMB_MCP], handLandmarks[THUMB_IP]);
+    // This angle threshold might need tuning. It checks if the thumb is extended outwards.
+    if (thumbAngle > 150) { 
         raisedFingers++;
-      }
-    } else { // Left hand
-      // For the left hand, the thumb is up if its tip's X is greater than the MCP joint's X
-      if (handLandmarks[THUMB_TIP].x > handLandmarks[THUMB_MCP].x) {
-        raisedFingers++;
-      }
     }
     
     totalFingers += raisedFingers;

@@ -30,7 +30,6 @@ export default function SketchAndScoreClient() {
   const { videoRef, landmarks, handedness, startVideo, stopVideo, isLoading: isHandTrackingLoading, error: handTrackingError, detectedFingers } = useHandTracking();
   const drawingCanvasRef = useRef<HTMLCanvasElement>(null);
   const lastPosition = useRef<{ x: number, y: number } | null>(null);
-  const lastSecondaryFingers = useRef<number>(0);
   
   const { toast } = useToast();
 
@@ -177,13 +176,23 @@ export default function SketchAndScoreClient() {
 
       return indexFingerExtended && middleFingerCurled && ringFingerCurled && pinkyFingerCurled;
   };
+  
+  const isPinching = (handLandmarks: any[]): boolean => {
+    if (!handLandmarks || handLandmarks.length < 21) return false;
+    const thumbTip = handLandmarks[4];
+    const indexTip = handLandmarks[8];
+    const distance = Math.sqrt(
+        Math.pow(thumbTip.x - indexTip.x, 2) +
+        Math.pow(thumbTip.y - indexTip.y, 2) +
+        Math.pow(thumbTip.z - indexTip.z, 2)
+    );
+    // This threshold may need adjustment
+    return distance < 0.05; 
+  }
 
   // Main gesture detection logic
   useEffect(() => {
     if (!landmarks.length || isHandTrackingLoading || !drawingHand || !['GET_READY', 'COUNTDOWN', 'DRAWING'].includes(gameState)) {
-        if (landmarks.length === 0) {
-            lastSecondaryFingers.current = 0;
-        }
         return;
     }
     
@@ -202,111 +211,72 @@ export default function SketchAndScoreClient() {
 
 
     let drawingHandLandmarks: any[] | null = null;
-    let gestureHandLandmarks: any[] | null = null;
-
-    // Assign hands based on user's choice and handedness detection
+    
+    // Assign drawing hand based on user's choice and handedness detection
     for(let i=0; i<handedness.length; i++) {
       if (handedness[i][0].categoryName === drawingHand) {
         drawingHandLandmarks = landmarks[i];
-      } else {
-        gestureHandLandmarks = landmarks[i];
+        break; // Found the drawing hand
       }
     }
     
-    if (gameState === 'DRAWING') {
-      // Handle tool switching with gesture hand
-      if (gestureHandLandmarks) {
-        let gestureHandFingers = 0;
-        const handIndex = landmarks.indexOf(gestureHandLandmarks);
-        if (handIndex !== -1) {
-            const tipIds = { thumb: 4, index: 8, middle: 12, ring: 16, pinky: 20 };
-            const mcpIds = { thumb: 2, index: 5, middle: 9, ring: 13, pinky: 17 };
-            const pipIds = { index: 6, middle: 10, ring: 14, pinky: 18 };
-            
-            let raisedFingers = 0;
-
-            if (gestureHandLandmarks[tipIds.index].y < gestureHandLandmarks[pipIds.index].y) raisedFingers++;
-            if (gestureHandLandmarks[tipIds.middle].y < gestureHandLandmarks[pipIds.middle].y) raisedFingers++;
-            if (gestureHandLandmarks[tipIds.ring].y < gestureHandLandmarks[pipIds.ring].y) raisedFingers++;
-            if (gestureHandLandmarks[tipIds.pinky].y < gestureHandLandmarks[pipIds.pinky].y) raisedFingers++;
-
-            const hand = handedness[handIndex][0].categoryName;
-            const thumbAngle = getAngle(gestureHandLandmarks[mcpIds.thumb], gestureHandLandmarks[tipIds.thumb - 1], gestureHandLandmarks[tipIds.thumb]);
-            
-            if (thumbAngle > 150.0) { // Angle for an extended thumb
-                raisedFingers++;
-            }
-            
-            gestureHandFingers = raisedFingers;
-        }
-
-        if (gestureHandFingers !== lastSecondaryFingers.current) {
-            if (gestureHandFingers === 5) {
-                if(drawingTool !== 'ERASER') {
-                  setDrawingTool('ERASER');
-                  toast({title: "Eraser activated!"});
-                }
-            } else if (gestureHandFingers === 4) {
-                 if(drawingTool !== 'PENCIL') {
-                  setDrawingTool('PENCIL');
-                  toast({title: "Pencil activated!"});
-                }
-            }
-        }
-        lastSecondaryFingers.current = gestureHandFingers;
-      } else {
-        lastSecondaryFingers.current = 0;
-      }
-
-      // Handle drawing with drawing hand
-      if (drawingHandLandmarks && isPointing(drawingHandLandmarks)) {
-        const indexTip = drawingHandLandmarks[8];
-        const ctx = getDrawingContext();
+    if (gameState === 'DRAWING' && drawingHandLandmarks) {
+        const pinching = isPinching(drawingHandLandmarks);
+        const pointing = isPointing(drawingHandLandmarks);
         
-        if (drawingCanvasRef.current && indexTip && ctx) {
-            const canvas = drawingCanvasRef.current;
-            // The video is flipped, so we must flip the X coordinate
-            const x = canvas.width - (indexTip.x * canvas.width);
-            const y = indexTip.y * canvas.height;
+        let currentTool: DrawingTool | null = null;
+        let activeLandmark: any | null = null;
 
-            if (drawingTool === 'PENCIL') {
-                ctx.globalCompositeOperation = 'source-over';
-                ctx.strokeStyle = 'black';
-                ctx.lineWidth = 5;
-            } else { // ERASER
-                ctx.globalCompositeOperation = 'destination-out';
-                ctx.lineWidth = 25;
+        if (pinching) {
+            currentTool = 'ERASER';
+            activeLandmark = drawingHandLandmarks[8]; // Use index finger tip for erasing position
+        } else if (pointing) {
+            currentTool = 'PENCIL';
+            activeLandmark = drawingHandLandmarks[8];
+        }
+
+        if (currentTool && activeLandmark) {
+            if(drawingTool !== currentTool) {
+                setDrawingTool(currentTool);
             }
             
-            ctx.beginPath();
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
+            const ctx = getDrawingContext();
+            if (drawingCanvasRef.current && ctx) {
+                const canvas = drawingCanvasRef.current;
+                const x = canvas.width - (activeLandmark.x * canvas.width);
+                const y = activeLandmark.y * canvas.height;
 
-            if (lastPosition.current) {
-                ctx.moveTo(lastPosition.current.x, lastPosition.current.y);
-            } else {
-                ctx.moveTo(x, y);
+                if (currentTool === 'PENCIL') {
+                    ctx.globalCompositeOperation = 'source-over';
+                    ctx.strokeStyle = 'black';
+                    ctx.lineWidth = 5;
+                } else { // ERASER
+                    ctx.globalCompositeOperation = 'destination-out';
+                    ctx.lineWidth = 25;
+                }
+                
+                ctx.beginPath();
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+
+                if (lastPosition.current) {
+                    ctx.moveTo(lastPosition.current.x, lastPosition.current.y);
+                } else {
+                    ctx.moveTo(x, y);
+                }
+                ctx.lineTo(x, y);
+                ctx.stroke();
+                lastPosition.current = { x, y };
             }
-            ctx.lineTo(x, y);
-            ctx.stroke();
-            lastPosition.current = { x, y };
+        } else {
+            lastPosition.current = null;
         }
-      } else {
-          lastPosition.current = null;
-      }
+    } else {
+        lastPosition.current = null;
     }
 }, [landmarks, handedness, gameState, drawingTool, clearCanvas, toast, getDrawingContext, isHandTrackingLoading, drawingHand, detectedFingers]);
 
-// Function to calculate angle (needed for thumb detection)
-function getAngle(a: any, b: any, c: any): number {
-    const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
-    let angle = Math.abs(radians * 180.0 / Math.PI);
-    if (angle > 180.0) {
-        angle = 360 - angle;
-    }
-    return angle;
-}
-  
+
   // Keep drawing canvas size in sync with video
   useEffect(() => {
     const video = videoRef.current;
@@ -351,7 +321,7 @@ function getAngle(a: any, b: any, c: any): number {
                       <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 text-primary">
                           <Pencil className="h-10 w-10" />
                       </div>
-                      <CardTitle className="font-headline text-4xl">Sketch & Score</CardTitle>
+                      <CardTitle className="font-headline text-4xl">Sketch &amp; Score</CardTitle>
                       <CardDescription className="text-lg text-muted-foreground pt-2">
                           Which hand will you use to draw?
                       </CardDescription>
