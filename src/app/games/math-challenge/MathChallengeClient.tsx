@@ -152,8 +152,11 @@ export default function MathChallengeClient() {
       return;
     };
     
-    canvas.width = video.clientWidth;
-    canvas.height = video.clientHeight;
+    // Ensure canvas is the same size as the video feed
+    if (canvas.width !== video.clientWidth || canvas.height !== video.clientHeight) {
+      canvas.width = video.clientWidth;
+      canvas.height = video.clientHeight;
+    }
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -165,12 +168,6 @@ export default function MathChallengeClient() {
       const wrist = primaryHand[0];
       if (!wrist) return;
       
-      // The video is mirrored, so we flip the canvas context to match
-      ctx.save();
-      ctx.scale(-1, 1);
-      ctx.translate(-canvas.width, 0);
-
-      // We need to un-mirror the x coordinate for drawing
       const x = (1 - wrist.x) * canvas.width;
       const y = wrist.y * canvas.height;
 
@@ -180,13 +177,21 @@ export default function MathChallengeClient() {
       ctx.fillStyle = 'rgba(128, 90, 213, 0.8)'; // Primary color with opacity
       ctx.fill();
 
+      // Save the context state before transforming it for the text
+      ctx.save();
+      // Translate to the point where we want to draw the text
+      ctx.translate(x, y - 40);
+      // The video is mirrored, so we un-mirror the text by flipping it back
+      ctx.scale(-1, 1);
+      
       // Draw text
       ctx.fillStyle = 'white';
       ctx.font = 'bold 32px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(detectedFingers.toString(), x, y - 40);
+      ctx.fillText(detectedFingers.toString(), 0, 0); // Draw at the new origin (0,0)
 
+      // Restore the context to its original state for the next frame
       ctx.restore();
     }
   }, [landmarks, detectedFingers, gameState]);
