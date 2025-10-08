@@ -192,17 +192,17 @@ export default function QuizQuestClient() {
       const x = (1 - wrist.x) * canvas.width;
       const y = wrist.y * canvas.height;
       
-      // Draw circle
-      ctx.beginPath();
-      ctx.arc(x, y - 40, 30, 0, 2 * Math.PI);
-      ctx.fillStyle = 'rgba(128, 90, 213, 0.8)'; // Primary color with opacity
-      ctx.fill();
-
       // Save context, translate to text position, scale to un-mirror, draw, and restore
       ctx.save();
       ctx.translate(x, y - 40);
       ctx.scale(-1, 1);
       
+      // Draw circle
+      ctx.beginPath();
+      ctx.arc(0, 0, 30, 0, 2 * Math.PI);
+      ctx.fillStyle = 'rgba(128, 90, 213, 0.8)'; // Primary color with opacity
+      ctx.fill();
+
       ctx.fillStyle = 'white';
       ctx.font = 'bold 32px sans-serif';
       ctx.textAlign = 'center';
@@ -211,7 +211,7 @@ export default function QuizQuestClient() {
 
       ctx.restore();
     }
-  }, [landmarks, detectedFingers, gameState, videoRef.current?.clientWidth, videoRef.current?.clientHeight]);
+  }, [landmarks, detectedFingers, gameState, videoRef]);
 
 
   const renderGameState = () => {
