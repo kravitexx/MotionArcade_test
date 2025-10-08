@@ -121,7 +121,7 @@ export function useHandTracking(): HandTrackingHook {
       try {
         setIsLoading(true);
         const vision = await FilesetResolver.forVisionTasks(
-          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
         );
         const handLandmarker = await HandLandmarker.createFromOptions(vision, {
           baseOptions: {
