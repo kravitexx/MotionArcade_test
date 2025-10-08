@@ -29,6 +29,7 @@ const subjects = [
 
 export default function QuizQuestClient() {
   const { videoRef, detectedFingers, landmarks, startVideo, stopVideo, isLoading: isHandTrackingLoading, error: handTrackingError } = useHandTracking();
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const { toast, dismiss } = useToast();
   const toastIdRef = useRef<string | null>(null);
   const isMobile = useIsMobile();
@@ -166,21 +167,55 @@ export default function QuizQuestClient() {
     );
   };
 
-  const getHandPosition = () => {
-      if (!landmarks.length || !videoRef.current) return null;
+  // Canvas drawing logic
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    if (!canvas || !video || !landmarks.length) {
+      const ctx = canvas?.getContext('2d');
+      ctx?.clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    };
+    
+    canvas.width = video.clientWidth;
+    canvas.height = video.clientHeight;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (['PLAYING', 'HOLDING'].includes(gameState)) {
       const primaryHand = landmarks[0];
       const wrist = primaryHand[0];
-      if (!wrist) return null;
+      if (!wrist) return;
+      
+      // The video is mirrored, so we flip the canvas context to match
+      ctx.save();
+      ctx.scale(-1, 1);
+      ctx.translate(-canvas.width, 0);
 
-      // The video is mirrored, so we must flip the x-coordinate
-      const x = (1 - wrist.x) * videoRef.current.clientWidth;
-      const y = wrist.y * videoRef.current.clientHeight;
+      // We need to un-mirror the x coordinate for drawing
+      const x = (1 - wrist.x) * canvas.width;
+      const y = wrist.y * canvas.height;
 
-      return {
-        left: `${x}px`,
-        top: `${y - 60}px`, // Position it above the hand
-      };
-    };
+      // Draw circle
+      ctx.beginPath();
+      ctx.arc(x, y - 40, 30, 0, 2 * Math.PI);
+      ctx.fillStyle = 'rgba(128, 90, 213, 0.8)'; // Primary color with opacity
+      ctx.fill();
+
+      // Draw text
+      ctx.fillStyle = 'white';
+      ctx.font = 'bold 32px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(detectedFingers.toString(), x, y - 40);
+
+      ctx.restore();
+    }
+  }, [landmarks, detectedFingers, gameState]);
+
 
   const renderGameState = () => {
     if (gameState === 'SUBJECT_SELECTION') {
@@ -236,16 +271,8 @@ export default function QuizQuestClient() {
       <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
         <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-muted shadow-lg">
           <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]"></video>
+          <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
           
-           {landmarks.length > 0 && ['PLAYING', 'HOLDING'].includes(gameState) && (
-            <div
-              className="absolute flex items-center justify-center w-16 h-16 bg-primary/80 text-white font-bold text-3xl rounded-full transition-all duration-100"
-              style={getHandPosition() || { display: 'none' }}
-            >
-              {detectedFingers}
-            </div>
-          )}
-
           {(showLoading) && (
             <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white">
               <Loader className="h-12 w-12 animate-spin" />
