@@ -134,8 +134,8 @@ export function useHandTracking(): HandTrackingHook {
           },
           runningMode: 'VIDEO',
           numHands: 2,
-          minHandDetectionConfidence: 0.6,
-          minHandTrackingConfidence: 0.6,
+          minHandDetectionConfidence: 0.7,
+          minHandTrackingConfidence: 0.7,
         });
         handLandmarkerRef.current = handLandmarker;
 

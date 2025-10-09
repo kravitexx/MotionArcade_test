@@ -15,6 +15,16 @@ const HAND_CONNECTIONS = [
   {start: 13, end: 17}, {start: 0, end: 17}, {start: 17, end: 18}, {start: 18, end: 19}, {start: 19, end: 20}
 ];
 
+// This function will help scale the size/thickness based on the z-coordinate
+function scaleWithDepth(z: number, min: number, max: number): number {
+    // The z-coordinate is negative, and closer points have a smaller absolute value.
+    // We can normalize it to a 0-1 range. Let's assume a typical range of -0.01 to -0.15.
+    const zClamped = Math.max(-0.15, Math.min(-0.01, z));
+    const zNormalized = (zClamped - (-0.15)) / (-0.01 - (-0.15)); // This maps it to 0 (far) to 1 (close)
+    return min + zNormalized * (max - min);
+}
+
+
 export default function JustShowYourHandsClient() {
   const [isGameStarted, setIsGameStarted] = useState(false);
   const { videoRef, landmarks, startVideo, stopVideo, isLoading, error } = useHandTracking();
@@ -61,7 +71,6 @@ export default function JustShowYourHandsClient() {
       for (const hand of landmarks) {
         // Draw connectors
         ctx.strokeStyle = '#34d399'; // Emerald-400
-        ctx.lineWidth = 3;
         for (const connection of HAND_CONNECTIONS) {
           const start = hand[connection.start];
           const end = hand[connection.end];
@@ -71,6 +80,10 @@ export default function JustShowYourHandsClient() {
             const endX = (1 - end.x) * canvas.width;
             const endY = end.y * canvas.height;
             
+            // Use the average depth of the two points for the line thickness
+            const avgZ = (start.z + end.z) / 2;
+            ctx.lineWidth = scaleWithDepth(avgZ, 1, 6);
+
             ctx.beginPath();
             ctx.moveTo(startX, startY);
             ctx.lineTo(endX, endY);
@@ -83,8 +96,10 @@ export default function JustShowYourHandsClient() {
         for (const point of hand) {
           const x = (1 - point.x) * canvas.width;
           const y = point.y * canvas.height;
+          const radius = scaleWithDepth(point.z, 2, 8);
+          
           ctx.beginPath();
-          ctx.arc(x, y, 5, 0, 2 * Math.PI);
+          ctx.arc(x, y, radius, 0, 2 * Math.PI);
           ctx.fill();
         }
       }
