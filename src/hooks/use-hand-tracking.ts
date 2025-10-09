@@ -50,8 +50,8 @@ export function useHandTracking({ modelType = 'standard' }: HandTrackingOptions 
     
     let processedLandmarks = results.landmarks;
 
-    // The ONNX model may return un-normalized coordinates.
-    // This block ensures the output is always normalized (0-1).
+    // The ONNX model returns un-normalized coordinates.
+    // This block ensures the output is always normalized (0-1) like the standard model.
     if (modelType === 'onnx' && results.landmarks.length > 0) {
         const videoWidth = video.videoWidth;
         const videoHeight = video.videoHeight;
