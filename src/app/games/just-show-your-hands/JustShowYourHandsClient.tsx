@@ -5,7 +5,7 @@ import { useHandTracking, type ModelType } from '@/hooks/use-hand-tracking';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Hand, Loader } from 'lucide-react';
-import { HAND_CONNECTIONS } from '@mediapipe/hands';
+import { HAND_CONNECTIONS } from '@mediapipe/tasks-vision';
 
 export default function JustShowYourHandsClient() {
   const [model, setModel] = useState<ModelType | null>(null);
