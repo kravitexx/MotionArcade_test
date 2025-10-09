@@ -65,10 +65,19 @@ export default function JustShowYourHandsClient() {
           const start = hand[connection.start];
           const end = hand[connection.end];
           if (start && end) {
-            const startX = (1 - start.x) * canvas.width;
-            const startY = start.y * canvas.height;
-            const endX = (1 - end.x) * canvas.width;
-            const endY = end.y * canvas.height;
+            let startX, startY, endX, endY;
+
+            if (model === 'onnx') {
+                startX = canvas.width - start.x;
+                startY = start.y;
+                endX = canvas.width - end.x;
+                endY = end.y;
+            } else { // standard model
+                startX = (1 - start.x) * canvas.width;
+                startY = start.y * canvas.height;
+                endX = (1 - end.x) * canvas.width;
+                endY = end.y * canvas.height;
+            }
             
             ctx.beginPath();
             ctx.moveTo(startX, startY);
@@ -80,8 +89,14 @@ export default function JustShowYourHandsClient() {
         // Draw landmarks
         ctx.fillStyle = '#a78bfa'; // Violet-400
         for (const point of hand) {
-          const x = (1 - point.x) * canvas.width;
-          const y = point.y * canvas.height;
+          let x, y;
+          if (model === 'onnx') {
+              x = canvas.width - point.x;
+              y = point.y;
+          } else { // standard model
+              x = (1 - point.x) * canvas.width;
+              y = point.y * canvas.height;
+          }
           ctx.beginPath();
           ctx.arc(x, y, 5, 0, 2 * Math.PI);
           ctx.fill();
