@@ -40,16 +40,16 @@ const prompt = ai.definePrompt({
   3.  The problem can be a symbolic arithmetic problem (e.g., "4 + 2") or a short word problem.
 
   Here is the selected difficulty level (1=easy, 10=hard): {{{difficulty}}}
-  -   Level 1: Use simple, single-step addition only. (e.g., "3 + 5" or "1 + 2")
-  -   Level 2: Use simple, single-step subtraction only. (e.g., "8 - 2" or "5 - 1")
+  -   Level 1: Use simple, single-step addition only. The result must be 10 or less. (e.g., "3 + 5" or "1 + 2")
+  -   Level 2: Use simple, single-step subtraction only. Numbers should be simple. (e.g., "8 - 2" or "5 - 1")
   -   Level 3: Use a mix of simple, single-step addition and subtraction. (e.g., "4 + 3" or "9 - 5")
-  -   Level 4: Introduce single-step multiplication or simple division that results in a whole number. Word problems should be very simple. (e.g., "2 * 4" or "How many wheels on two bikes?")
-  -   Level 5: A mix of all four single-step operations (addition, subtraction, multiplication, division). Word problems can be slightly more descriptive.
+  -   Level 4: Introduce single-step multiplication. Word problems should be very simple. (e.g., "2 * 4" or "How many wheels on two cars?")
+  -   Level 5: Introduce simple division that results in a whole number. A mix of all four single-step operations is allowed. Word problems can be slightly more descriptive. (e.g., "8 / 2" or "If you share 9 cookies among 3 friends, how many does each get?")
   -   Level 6: Create two-step problems. Use parentheses for symbolic problems. Word problems should require two calculations. (e.g., "(2 * 3) + 4" or "A farmer has 3 pens, and each pen has 3 sheep. If he sells 2 sheep, how many are left?")
-  -   Level 7: More complex two-step problems. Introduce concepts like "half of" for even numbers.
+  -   Level 7: More complex two-step problems. Introduce concepts like "half of" for even numbers. (e.g., "You have 8 apples and eat half. Then you pick 3 more. How many apples now?")
   -   Level 8: Create three-step problems. The intermediate calculations can go above 10, but the final answer MUST be between 0 and 10. Word problems are strongly preferred. (e.g., "You have 5 apples. You get 5 more, then eat half. How many are left?")
-  -   Level 9: More complex three-step problems. The logic should be less direct.
-  -   Level 10: Create a complex, multi-step (3 or 4 steps) word problem that requires careful reading and logical steps. The problem should be challenging but result in a simple integer answer between 0 and 10.
+  -   Level 9: More complex three-step problems where the logic is less direct. Use phrases like "twice as many" or "three less than". (e.g., "A basket has 4 red apples. There are twice as many green apples. If you remove 3 green apples, how many green apples are left?")
+  -   Level 10: Create a complex, multi-step (3 or 4 steps) word problem that requires careful reading and logical deduction. The problem should be challenging but result in a simple integer answer between 0 and 10. (e.g., "A bus starts with 10 people. At the first stop, 5 people get off and 2 get on. At the second stop, half of the people currently on the bus get off. How many people are left?")
 
   Generate a math problem and the solution to that problem.
   Ensure that you do not include the solution in the problem itself, and that the solution matches the value in the "solution" output field.
@@ -58,7 +58,7 @@ const prompt = ai.definePrompt({
 
   Example for difficulty 1:
   {
-    "problem": "5 + 3?",
+    "problem": "5 + 3",
     "solution": 8
   }
 
@@ -76,8 +76,8 @@ const prompt = ai.definePrompt({
 
   Example for difficulty 10:
   {
-    "problem": "A bus starts with 10 people. At the first stop, 5 people get off and 2 get on. At the second stop, half of the people currently on the bus get off. How many people are left?",
-    "solution": 3
+    "problem": "A train car has 8 rows of seats. Each row has 4 seats. If the car is half full, and then 6 people get off, how many people are on the train?",
+    "solution": 10
   }
   `,
 });
@@ -93,5 +93,3 @@ const generateMathProblemFlow = ai.defineFlow(
     return output!;
   }
 );
-
-    
