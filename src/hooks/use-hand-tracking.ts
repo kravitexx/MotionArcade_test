@@ -139,7 +139,7 @@ export function useHandTracking({ modelType = 'standard' }: HandTrackingOptions 
         let modelPath: string;
         if (modelType === 'onnx') {
             // Using a publicly available ONNX model for hand detection.
-            modelPath = 'https://storage.googleapis.com/mediapipe-assets/hand_landmarker.onnx';
+            modelPath = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.onnx';
         } else {
             // Standard MediaPipe model
             modelPath = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
