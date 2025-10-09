@@ -18,24 +18,20 @@ const HAND_CONNECTIONS = [
 // This function will help scale the size/thickness based on the z-coordinate
 function scaleWithDepth(z: number, minSize: number, maxSize: number): number {
   // A smaller absolute z value means it's closer to the camera.
-  // We can use the inverse of the absolute z value for scaling.
-  // We'll clamp the z value to a reasonable range to avoid extreme sizes.
   const zAbs = Math.abs(z);
   
-  // Clamp z to avoid division by zero or extreme values
-  const zClamped = Math.max(0.01, Math.min(zAbs, 0.3));
+  // Define a reasonable range for depth. Values outside this will be clamped.
+  const minZ = 0.01; // Represents the closest a point can be
+  const maxZ = 0.3;  // Represents the farthest a point can be
 
-  // The scale will be inversely proportional to the distance.
-  // 1/0.01 = 100 (close), 1/0.3 = 3.33 (far)
-  // We need to normalize this to a 0-1 range.
-  const minZ = 0.01;
-  const maxZ = 0.3;
-  
-  // A low zClamped value (close) should result in a high normalized value (close to 1)
-  // A high zClamped value (far) should result in a low normalized value (close to 0)
+  // Clamp the absolute z value to our expected range.
+  const zClamped = Math.max(minZ, Math.min(zAbs, maxZ));
+
+  // Normalize the clamped value. We want a value from 0 (far) to 1 (close).
+  // This creates the inverse relationship: as zClamped increases (gets farther), normalized value decreases.
   const normalized = 1 - (zClamped - minZ) / (maxZ - minZ);
 
-  // Apply to the size range
+  // Apply the normalized value to the desired size range.
   return minSize + (normalized * (maxSize - minSize));
 }
 
