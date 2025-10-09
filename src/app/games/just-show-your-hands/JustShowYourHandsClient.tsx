@@ -17,10 +17,13 @@ const HAND_CONNECTIONS = [
 
 // This function will help scale the size/thickness based on the z-coordinate
 function scaleWithDepth(z: number, min: number, max: number): number {
-    // The z-coordinate is negative, and closer points have a smaller absolute value.
-    // We can normalize it to a 0-1 range. Let's assume a typical range of -0.01 to -0.15.
+    // The z-coordinate is negative. A smaller absolute value (e.g., -0.01) is closer.
+    // A larger absolute value (e.g., -0.15) is farther.
+    // We want to map this so that "close" (z near 0) is max size, and "far" is min size.
     const zClamped = Math.max(-0.15, Math.min(-0.01, z));
-    const zNormalized = (zClamped - (-0.15)) / (-0.01 - (-0.15)); // This maps it to 0 (far) to 1 (close)
+    // This maps the clamped z-value to a 0-1 range.
+    // Far (-0.15) -> 0. Close (-0.01) -> 1.
+    const zNormalized = (zClamped - (-0.15)) / (-0.01 - (-0.15)); 
     return min + zNormalized * (max - min);
 }
 
