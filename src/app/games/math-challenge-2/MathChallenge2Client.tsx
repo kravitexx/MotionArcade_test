@@ -216,7 +216,7 @@ export default function MathChallenge2Client() {
           <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]"></video>
           
           {gameState === 'PLAYING' && (
-             <div className="absolute top-0 left-0 w-full h-full flex justify-around items-center pt-4 px-4">
+             <div className="absolute top-0 left-0 w-full h-full flex justify-around items-start pt-16 px-4">
               {bubbles.map((bubble, index) => (
                 <div
                   key={index}
