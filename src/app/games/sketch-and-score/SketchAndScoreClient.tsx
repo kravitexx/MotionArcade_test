@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -43,6 +44,7 @@ export default function SketchAndScoreClient() {
 
   const [gameState, setGameState] = useState<GameState>('IDLE');
   const [shapeToDraw, setShapeToDraw] = useState<string | null>(null);
+  const [drawnShapes, setDrawnShapes] = useState<string[]>([]);
   const [score, setScore] = useState(0);
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
   const [drawingTool, setDrawingTool] = useState<DrawingTool>('PENCIL');
@@ -67,8 +69,11 @@ export default function SketchAndScoreClient() {
 
   const fetchNewShape = useCallback(async () => {
     try {
-      const { shape } = await generateShapeToDraw();
+      // Pass the list of already drawn shapes to the AI flow
+      const { shape } = await generateShapeToDraw({ pastShapes: drawnShapes });
       setShapeToDraw(shape);
+      // Add the new shape to our list of drawn shapes for the next round
+      setDrawnShapes(prev => [...prev, shape]);
       setGameState('GET_READY');
     } catch (error) {
       toast({
@@ -78,11 +83,12 @@ export default function SketchAndScoreClient() {
       });
       setGameState('IDLE');
     }
-  }, [toast]);
+  }, [toast, drawnShapes]);
   
   const startGame = useCallback(async (hand: HandChoice) => {
     setDrawingHand(hand);
     setScore(0);
+    setDrawnShapes([]); // Reset the list of drawn shapes for a new game
     setGameState('LOADING_CAMERA');
     try {
       await startVideo();
@@ -357,7 +363,7 @@ export default function SketchAndScoreClient() {
         lastPosition.current = null;
         midPointRef.current = null;
     }
-  }, [landmarks, handedness, gameState, drawingTool, clearCanvas, toast, getDrawingContext, getOverlayContext, isHandTrackingLoading, drawingHand, detectedFingers, isMobile]);
+  }, [landmarks, handedness, gameState, drawingTool, eraserSize, clearCanvas, toast, getDrawingContext, getOverlayContext, isHandTrackingLoading, drawingHand, detectedFingers, isMobile]);
 
 
   // Keep canvas sizes in sync with video
