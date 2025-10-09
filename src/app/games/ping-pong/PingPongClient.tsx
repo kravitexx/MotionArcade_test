@@ -11,7 +11,7 @@ const BALL_RADIUS = 10;
 const BALL_SPEED = 5;
 
 export default function PingPongClient() {
-  const { videoRef, landmarks, handTrackingCanvasRef, isLoading, error } = useHandTracking();
+  const { videoRef, landmarks, handTrackingCanvasRef, isLoading, error, startVideo } = useHandTracking();
   const gameCanvasRef = useRef<HTMLCanvasElement>(null);
   const animationFrameRef = useRef<number>();
 
@@ -27,6 +27,10 @@ export default function PingPongClient() {
     vy: 5,
   });
   const playerPaddle = useRef({ x: 0 });
+
+  useEffect(() => {
+    startVideo();
+  }, [startVideo]);
 
   const resetGame = () => {
     const gameCanvas = gameCanvasRef.current;
@@ -93,7 +97,8 @@ export default function PingPongClient() {
       const hand = landmarks[0];
       const wrist = hand[0]; // Assuming wrist is the first landmark
       if (wrist) {
-        playerPaddle.current.x = (1 - wrist.x) * gameCanvas.width - PADDLE_WIDTH / 2;
+        const newPaddleX = (1 - wrist.x) * gameCanvas.width - PADDLE_WIDTH / 2;
+        playerPaddle.current.x = Math.max(0, Math.min(newPaddleX, gameCanvas.width - PADDLE_WIDTH));
       }
     }
   };
