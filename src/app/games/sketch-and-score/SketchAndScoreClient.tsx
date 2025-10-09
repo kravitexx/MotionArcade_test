@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { Loader, Pencil, Eraser, Sparkles, Circle, Square, Triangle, Star, Heart, ArrowRight, Home, CheckCircle2, XCircle, Hand } from 'lucide-react';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
 type GameState = 'IDLE' | 'LOADING_CAMERA' | 'GET_READY' | 'COUNTDOWN' | 'DRAWING' | 'SUBMITTING' | 'FEEDBACK';
 type DrawingTool = 'PENCIL' | 'ERASER';
@@ -35,6 +37,7 @@ export default function SketchAndScoreClient() {
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null); // Canvas for UI overlays
   const lastPosition = useRef<{ x: number, y: number } | null>(null);
   const midPointRef = useRef<{ x: number, y: number } | null>(null);
+  const isMobile = useIsMobile();
   
   const { toast } = useToast();
 
@@ -170,8 +173,6 @@ export default function SketchAndScoreClient() {
       // Check if index finger is extended
       const indexTip = handLandmarks[8];
       const indexPip = handLandmarks[6];
-      const indexMcp = handLandmarks[5];
-      const indexWrist = handLandmarks[0];
 
       // Check if other fingers are curled
       const middleTip = handLandmarks[12];
@@ -204,7 +205,7 @@ export default function SketchAndScoreClient() {
 
   // Main gesture detection logic
   useEffect(() => {
-    if (!landmarks.length || isHandTrackingLoading || !drawingHand || !['GET_READY', 'COUNTDOWN', 'DRAWING'].includes(gameState)) {
+    if (!landmarks.length || isHandTrackingLoading || !['GET_READY', 'COUNTDOWN', 'DRAWING'].includes(gameState)) {
         return;
     }
 
@@ -213,8 +214,8 @@ export default function SketchAndScoreClient() {
       overlayCtx.clearRect(0, 0, overlayCanvasRef.current.width, overlayCanvasRef.current.height);
     }
     
-    // Prioritize the 10-finger clear gesture
-    if (detectedFingers === 10) {
+    // Prioritize the 10-finger clear gesture for desktop
+    if (!isMobile && detectedFingers === 10) {
         if (gameState === 'GET_READY') {
           setCountdown(COUNTDOWN_SECONDS);
           setGameState('COUNTDOWN');
@@ -228,25 +229,27 @@ export default function SketchAndScoreClient() {
 
     let drawingHandLandmarks: any[] | null = null;
     let gestureHandLandmarks: any[] | null = null;
-    const gestureHandChoice = drawingHand === 'Left' ? 'Right' : 'Left';
-
     
-    // Assign drawing hand and gesture hand based on user's choice and handedness detection
-    for(let i=0; i<handedness.length; i++) {
-      if (handedness[i][0].categoryName === drawingHand) {
-        drawingHandLandmarks = landmarks[i];
-      } else if (handedness[i][0].categoryName === gestureHandChoice) {
-        gestureHandLandmarks = landmarks[i];
+    if (drawingHand) {
+      const gestureHandChoice = drawingHand === 'Left' ? 'Right' : 'Left';
+      for(let i=0; i<handedness.length; i++) {
+        if (handedness[i][0].categoryName === drawingHand) {
+          drawingHandLandmarks = landmarks[i];
+        } else if (handedness[i][0].categoryName === gestureHandChoice) {
+          gestureHandLandmarks = landmarks[i];
+        }
       }
     }
     
     if (gameState === 'DRAWING') {
         if (drawingHandLandmarks) {
-            const pinching = isPinching(drawingHandLandmarks);
             const pointing = isPointing(drawingHandLandmarks);
             
             let currentTool: DrawingTool | null = null;
             let activeLandmark: any | null = null;
+            
+            // On desktop, pinching controls the eraser. On mobile, it's a button.
+            const pinching = !isMobile && isPinching(drawingHandLandmarks);
 
             if (pinching) {
                 currentTool = 'ERASER';
@@ -254,15 +257,16 @@ export default function SketchAndScoreClient() {
             } else if (pointing) {
                 currentTool = 'PENCIL';
                 activeLandmark = drawingHandLandmarks[8];
-            } else {
-                currentTool = 'PENCIL'; // Default to pencil if no clear gesture
             }
             
-            if (drawingTool !== currentTool) {
+            // Only update tool state if it's different and not on mobile (where it's manual)
+            if (currentTool && drawingTool !== currentTool && !isMobile) {
                 setDrawingTool(currentTool);
             }
 
-            if (activeLandmark) {
+            const activeTool = isMobile ? drawingTool : currentTool;
+
+            if (activeLandmark && activeTool) {
                 const drawingCtx = getDrawingContext();
                 if (drawingCanvasRef.current && drawingCtx) {
                     const canvas = drawingCanvasRef.current;
@@ -270,7 +274,7 @@ export default function SketchAndScoreClient() {
                     const y = activeLandmark.y * canvas.height;
                     const mirroredX = canvas.width - x;
 
-                    if (currentTool === 'PENCIL') {
+                    if (activeTool === 'PENCIL') {
                         drawingCtx.globalCompositeOperation = 'source-over';
                         drawingCtx.strokeStyle = 'black';
                         drawingCtx.lineWidth = 5;
@@ -308,7 +312,8 @@ export default function SketchAndScoreClient() {
           midPointRef.current = null;
         }
 
-        if (gestureHandLandmarks && drawingTool === 'ERASER') {
+        // On desktop, second hand controls eraser size
+        if (!isMobile && gestureHandLandmarks && drawingTool === 'ERASER') {
           const thumbTip = gestureHandLandmarks[4];
           const indexTip = gestureHandLandmarks[8];
           const distance = Math.sqrt(
@@ -352,7 +357,7 @@ export default function SketchAndScoreClient() {
         lastPosition.current = null;
         midPointRef.current = null;
     }
-  }, [landmarks, handedness, gameState, drawingTool, clearCanvas, toast, getDrawingContext, getOverlayContext, isHandTrackingLoading, drawingHand, detectedFingers, eraserSize]);
+  }, [landmarks, handedness, gameState, drawingTool, clearCanvas, toast, getDrawingContext, getOverlayContext, isHandTrackingLoading, drawingHand, detectedFingers, isMobile]);
 
 
   // Keep canvas sizes in sync with video
@@ -403,7 +408,7 @@ export default function SketchAndScoreClient() {
                       </div>
                       <CardTitle className="font-headline text-4xl">Sketch &amp; Score</CardTitle>
                       <CardDescription className="text-lg text-muted-foreground pt-2">
-                          Which hand will you use to draw?
+                        {isMobile ? "Which hand will you draw with?" : "Which hand will you use to draw?"}
                       </CardDescription>
                   </CardHeader>
                   <CardContent className="flex justify-center gap-4">
@@ -441,9 +446,21 @@ export default function SketchAndScoreClient() {
             )}
 
             {gameState === 'GET_READY' && (
-                <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center rounded-lg text-white z-20">
-                    <h2 className="font-headline text-5xl mb-4">Show 10 Fingers to Start!</h2>
-                    <Hand className="h-24 w-24 animate-pulse" />
+                <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center rounded-lg text-white z-20 text-center p-4">
+                  {isMobile ? (
+                     <>
+                      <h2 className="font-headline text-5xl mb-4">Get Ready!</h2>
+                      <Button onClick={() => {
+                        setCountdown(COUNTDOWN_SECONDS);
+                        setGameState('COUNTDOWN');
+                      }} size="lg">Tap to Start</Button>
+                     </>
+                  ): (
+                    <>
+                      <h2 className="font-headline text-5xl mb-4">Show 10 Fingers to Start!</h2>
+                      <Hand className="h-24 w-24 animate-pulse" />
+                    </>
+                  )}
                 </div>
             )}
              {gameState === 'COUNTDOWN' && (
@@ -457,10 +474,21 @@ export default function SketchAndScoreClient() {
                     <Button onClick={handleSubmit} size="lg" className="font-headline text-lg" >
                       <Sparkles className="mr-2"/> Submit Drawing
                     </Button>
-                    <Card className="p-2 px-4 flex items-center gap-2 bg-background/80 ml-4">
-                      <span className="text-muted-foreground text-sm font-bold">TOOL:</span>
-                      {drawingTool === 'PENCIL' ? <Pencil className="h-6 w-6 text-primary"/> : <Eraser className="h-6 w-6 text-blue-400" />}
-                    </Card>
+                    {isMobile ? (
+                      <div className="flex gap-2 ml-4">
+                        <Button onClick={() => setDrawingTool(t => t === 'PENCIL' ? 'ERASER' : 'PENCIL')} variant="outline" size="icon" className="h-12 w-12 bg-background/80">
+                          {drawingTool === 'PENCIL' ? <Eraser/> : <Pencil/>}
+                        </Button>
+                         <Button onClick={clearCanvas} variant="destructive" size="icon" className="h-12 w-12 bg-background/80">
+                          <XCircle/>
+                        </Button>
+                      </div>
+                    ) : (
+                      <Card className="p-2 px-4 flex items-center gap-2 bg-background/80 ml-4">
+                        <span className="text-muted-foreground text-sm font-bold">TOOL:</span>
+                        {drawingTool === 'PENCIL' ? <Pencil className="h-6 w-6 text-primary"/> : <Eraser className="h-6 w-6 text-blue-400" />}
+                      </Card>
+                    )}
                   </div>
                 </div>
             )}
@@ -471,12 +499,30 @@ export default function SketchAndScoreClient() {
                 </div>
             )}
              {gameState === 'FEEDBACK' && feedback && (
-                 <div className="absolute inset-0 bg-black/70 flex flex-col gap-4 items-center justify-center rounded-lg text-white z-30">
+                 <div className="absolute inset-0 bg-black/70 flex flex-col gap-4 items-center justify-center rounded-lg text-white z-30 text-center p-4">
                     {feedback.isMatch ? <CheckCircle2 className="h-24 w-24 text-green-400" /> : <XCircle className="h-24 w-24 text-red-400" />}
-                    <h2 className="font-headline text-4xl max-w-lg text-center">{feedback.message}</h2>
+                    <h2 className="font-headline text-4xl max-w-lg">{feedback.message}</h2>
                     <h3 className="text-2xl font-bold">Your Score: {score}</h3>
                     <Button onClick={handleNextQuestion} size="lg" className="font-headline text-lg mt-4">Next Shape</Button>
                 </div>
+            )}
+             {isMobile && gameState === 'DRAWING' && drawingTool === 'ERASER' && (
+              <div className="absolute top-4 left-1/2 -translate-x-1/2 w-4/5 max-w-xs z-20">
+                <Alert>
+                  <Eraser className="h-4 w-4" />
+                  <AlertTitle>Eraser Size</AlertTitle>
+                  <AlertDescription>
+                     <input
+                        type="range"
+                        min={MIN_ERASER_SIZE}
+                        max={MAX_ERASER_SIZE}
+                        value={eraserSize}
+                        onChange={(e) => setEraserSize(Number(e.target.value))}
+                        className="w-full"
+                      />
+                  </AlertDescription>
+                </Alert>
+              </div>
             )}
         </>
     );
