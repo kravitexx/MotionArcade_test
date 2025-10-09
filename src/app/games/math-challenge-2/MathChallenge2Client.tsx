@@ -4,12 +4,14 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useHandTracking } from '@/hooks/use-hand-tracking';
 import { generateMathProblem2, type GenerateMathProblem2Output } from '@/ai/flows/math-challenge-2-flow';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { CheckCircle2, XCircle, Loader, Timer, Smartphone, Target } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Slider } from '@/components/ui/slider';
+import { Label } from '@/components/ui/label';
 
 type GameState = 'IDLE' | 'LOADING' | 'PLAYING' | 'FEEDBACK' | 'LOADING_PROBLEM';
 type Bubble = {
@@ -18,7 +20,8 @@ type Bubble = {
 };
 
 const FEEDBACK_DURATION = 2000;
-const PROBLEM_TIMER_SECONDS = 20;
+const BASE_TIMER_SECONDS = 20;
+const EXTRA_TIME_PER_DIFFICULTY = 2;
 
 export default function MathChallenge2Client() {
   const { videoRef, landmarks, startVideo, stopVideo, isLoading: isHandTrackingLoading, error: handTrackingError } = useHandTracking();
@@ -31,12 +34,15 @@ export default function MathChallenge2Client() {
   const pointerRef = useRef<SVGSVGElement | null>(null);
 
   const [gameState, setGameState] = useState<GameState>('IDLE');
+  const [difficulty, setDifficulty] = useState(3);
   const [currentProblem, setCurrentProblem] = useState<GenerateMathProblem2Output | null>(null);
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
   const [score, setScore] = useState(0);
   const [feedback, setFeedback] = useState<'correct' | 'incorrect' | null>(null);
   const [lastAnswer, setLastAnswer] = useState<number | null>(null);
-  const [timeLeft, setTimeLeft] = useState(PROBLEM_TIMER_SECONDS);
+  
+  const [problemTimerDuration, setProblemTimerDuration] = useState(BASE_TIMER_SECONDS);
+  const [timeLeft, setTimeLeft] = useState(BASE_TIMER_SECONDS);
 
   useEffect(() => {
     if (handTrackingError) {
@@ -68,11 +74,13 @@ export default function MathChallenge2Client() {
 
   const fetchNewProblem = useCallback(async () => {
     setGameState('LOADING_PROBLEM');
+    const timerDuration = BASE_TIMER_SECONDS + (difficulty * EXTRA_TIME_PER_DIFFICULTY);
+    setProblemTimerDuration(timerDuration);
     try {
-      const problem = await generateMathProblem2({ currentScore: score });
+      const problem = await generateMathProblem2({ difficulty, currentScore: score });
       setCurrentProblem(problem);
       setBubbles(createBubbles(problem));
-      setTimeLeft(PROBLEM_TIMER_SECONDS);
+      setTimeLeft(timerDuration);
       setGameState('PLAYING');
     } catch (error) {
       toast({
@@ -82,7 +90,7 @@ export default function MathChallenge2Client() {
       });
       setGameState('IDLE');
     }
-  }, [score, toast, createBubbles]);
+  }, [difficulty, score, toast, createBubbles]);
 
 
   const startGame = useCallback(async () => {
@@ -187,22 +195,37 @@ export default function MathChallenge2Client() {
   const renderGameState = () => {
     if (gameState === 'IDLE') {
       return (
-        <div className="flex flex-col items-center justify-center text-center">
-          <h2 className="font-headline text-3xl mb-4">Math Challenge 2</h2>
-          <p className="text-muted-foreground mb-8 max-w-md">
-            Get ready to move! Pop the bubbles containing the correct answer with your hand to score points.
-          </p>
-          {isMobile && (
-             <Alert className="mb-4">
-              <Smartphone className="h-4 w-4" />
-              <AlertTitle>Mobile Experience</AlertTitle>
-              <AlertDescription>
-                This game is best experienced on a desktop. Performance may be slower on mobile devices.
-              </AlertDescription>
-            </Alert>
-          )}
-          <Button onClick={startGame} size="lg" className="font-headline text-lg">Start Game</Button>
-        </div>
+        <Card className="max-w-md w-full p-6">
+          <CardContent className="pt-6 text-center">
+            <h2 className="font-headline text-3xl mb-4">Math Challenge 2</h2>
+            <p className="text-muted-foreground mb-8">
+              Pop the bubbles with your hand to answer math questions that get harder as you go!
+            </p>
+            
+            <div className="space-y-4 mb-8">
+                <Label htmlFor="difficulty-slider" className="text-center block">Difficulty Level: {difficulty}</Label>
+                <Slider
+                  id="difficulty-slider"
+                  min={1}
+                  max={10}
+                  step={1}
+                  value={[difficulty]}
+                  onValueChange={(value) => setDifficulty(value[0])}
+                />
+            </div>
+            
+            {isMobile && (
+              <Alert className="mb-4 text-left">
+                <Smartphone className="h-4 w-4" />
+                <AlertTitle>Mobile Experience</AlertTitle>
+                <AlertDescription>
+                  This game is best experienced on a desktop. Performance may be slower on mobile devices.
+                </AlertDescription>
+              </Alert>
+            )}
+            <Button onClick={startGame} size="lg" className="font-headline text-lg w-full">Start Game</Button>
+          </CardContent>
+        </Card>
       );
     }
 
@@ -241,7 +264,7 @@ export default function MathChallenge2Client() {
           )}
         
           {gameState === 'PLAYING' && (
-             <Target ref={pointerRef} className="absolute top-0 left-0 text-cyan-400 -translate-x-1/2 -translate-y-1/2 transition-transform duration-75 ease-out" style={{pointerEvents: 'none'}} />
+             <Target ref={pointerRef} className="absolute top-0 left-0 text-cyan-400 w-6 h-6 -translate-x-1/2 -translate-y-1/2 transition-transform duration-75 ease-out" style={{pointerEvents: 'none'}} />
           )}
 
         </div>
@@ -273,7 +296,7 @@ export default function MathChallenge2Client() {
                {gameState === 'PLAYING' && (
                  <div className="mt-2 text-center">
                    <p className="text-sm text-muted-foreground">Pop the correct bubble!</p>
-                   <Progress value={(timeLeft / PROBLEM_TIMER_SECONDS) * 100} className="w-full h-2 mt-1" />
+                   <Progress value={(timeLeft / problemTimerDuration) * 100} className="w-full h-2 mt-1" />
                  </div>
               )}
                {gameState === 'FEEDBACK' && currentProblem && (
