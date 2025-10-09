@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -47,15 +48,31 @@ export function useHandTracking({ modelType = 'standard' }: HandTrackingOptions 
     const startTimeMs = performance.now();
     const results = handLandmarkerRef.current.detectForVideo(video, startTimeMs);
     
-    const totalFingerCount = countFingers(results.landmarks, results.handedness);
+    let processedLandmarks = results.landmarks;
+
+    // The ONNX model may return un-normalized coordinates.
+    // This block ensures the output is always normalized (0-1).
+    if (modelType === 'onnx' && results.landmarks.length > 0) {
+        const videoWidth = video.videoWidth;
+        const videoHeight = video.videoHeight;
+        
+        processedLandmarks = results.landmarks.map(hand => 
+            hand.map(point => ({
+                ...point,
+                x: point.x / videoWidth,
+                y: point.y / videoHeight,
+            }))
+        );
+    }
+    
+    const totalFingerCount = countFingers(processedLandmarks, results.handedness);
     
     setDetectedFingers(totalFingerCount);
-
     setHandedness(results.handedness || []);
-    setLandmarks(results.landmarks || []);
+    setLandmarks(processedLandmarks || []);
 
     requestRef.current = requestAnimationFrame(predictWebcam);
-  }, []);
+  }, [modelType]);
 
   const stopVideo = useCallback(() => {
     if (requestRef.current) {
