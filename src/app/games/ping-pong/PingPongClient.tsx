@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useHandTracking } from '@/hooks/use-hand-tracking';
 import { Loader } from 'lucide-react';
+import type { Landmark } from '@mediapipe/tasks-vision';
 
 // Constants
 const PADDLE_WIDTH = 100;
@@ -14,6 +15,7 @@ export default function PingPongClient() {
   const { videoRef, landmarks, handTrackingCanvasRef, isLoading, error, startVideo } = useHandTracking();
   const gameCanvasRef = useRef<HTMLCanvasElement>(null);
   const animationFrameRef = useRef<number>();
+  const landmarksRef = useRef<Landmark[][]>();
 
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
@@ -27,6 +29,10 @@ export default function PingPongClient() {
     vy: 5,
   });
   const playerPaddle = useRef({ x: 0 });
+
+  useEffect(() => {
+    landmarksRef.current = landmarks;
+  }, [landmarks]);
 
   useEffect(() => {
     startVideo();
@@ -93,8 +99,8 @@ export default function PingPongClient() {
     }
 
     // Move paddle with hand
-    if (landmarks && landmarks.length > 0) {
-      const hand = landmarks[0];
+    if (landmarksRef.current && landmarksRef.current.length > 0) {
+      const hand = landmarksRef.current[0];
       const indexFinger = hand[8]; // Using index finger tip (landmark 8) for more precise control
       if (indexFinger) {
         const newPaddleX = (1 - indexFinger.x) * gameCanvas.width - PADDLE_WIDTH / 2;
@@ -126,12 +132,19 @@ export default function PingPongClient() {
 
   useEffect(() => {
     const gameCanvas = gameCanvasRef.current;
-    if (!gameCanvas) return;
+    if (!gameCanvas || isLoading) return;
+    
+    // Set initial canvas size and start the game
+    gameCanvas.width = gameCanvas.clientWidth;
+    gameCanvas.height = gameCanvas.clientHeight;
+    resetGame();
 
     const resizeObserver = new ResizeObserver(() => {
-        gameCanvas.width = gameCanvas.clientWidth;
-        gameCanvas.height = gameCanvas.clientHeight;
-        resetGame();
+        if (gameCanvas.clientWidth > 0 && gameCanvas.clientHeight > 0) {
+            gameCanvas.width = gameCanvas.clientWidth;
+            gameCanvas.height = gameCanvas.clientHeight;
+            resetGame();
+        }
     });
     resizeObserver.observe(gameCanvas);
 
@@ -141,9 +154,8 @@ export default function PingPongClient() {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, []);
+  }, [isLoading]);
 
-  useEffect(gameLoop, [landmarks]);
 
   useEffect(() => {
     if (gameOver) {
