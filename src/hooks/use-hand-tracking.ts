@@ -56,13 +56,19 @@ export function useHandTracking({ modelType = 'standard' }: HandTrackingOptions 
         const videoWidth = video.videoWidth;
         const videoHeight = video.videoHeight;
         
-        processedLandmarks = results.landmarks.map(hand => 
-            hand.map(point => ({
-                ...point,
-                x: point.x / videoWidth,
-                y: point.y / videoHeight,
-            }))
-        );
+        // Prevent division by zero if video dimensions are not ready
+        if (videoWidth > 0 && videoHeight > 0) {
+            processedLandmarks = results.landmarks.map(hand => 
+                hand.map(point => ({
+                    ...point,
+                    x: point.x / videoWidth,
+                    y: point.y / videoHeight,
+                }))
+            );
+        } else {
+            // If dimensions are not ready, don't process landmarks this frame
+            processedLandmarks = [];
+        }
     }
     
     const totalFingerCount = countFingers(processedLandmarks, results.handedness);
