@@ -6,15 +6,18 @@ import { generateMathProblem, type GenerateMathProblemOutput } from '@/ai/flows/
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { CheckCircle2, XCircle, Loader, Hand, Timer, Smartphone } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader, Hand, Timer, Smartphone, Info } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Slider } from '@/components/ui/slider';
+import { Label } from '@/components/ui/label';
 
-type GameState = 'IDLE' | 'LOADING' | 'PLAYING' | 'HOLDING' | 'FEEDBACK' | 'LOADING_PROBLEM';
+type GameState = 'DIFFICULTY_SELECTION' | 'LOADING' | 'PLAYING' | 'HOLDING' | 'FEEDBACK' | 'LOADING_PROBLEM';
 
 const FEEDBACK_DURATION = 1500;
-const PROBLEM_TIMER_SECONDS = 15;
+const BASE_TIMER_SECONDS = 10;
+const EXTRA_TIME_PER_DIFFICULTY = 1;
 const ANSWER_HOLD_SECONDS = 3;
 
 export default function MathChallengeClient() {
@@ -24,12 +27,16 @@ export default function MathChallengeClient() {
   const toastIdRef = useRef<string | null>(null);
   const isMobile = useIsMobile();
   
-  const [gameState, setGameState] = useState<GameState>('IDLE');
+  const [gameState, setGameState] = useState<GameState>('DIFFICULTY_SELECTION');
+  const [difficulty, setDifficulty] = useState(3);
   const [currentProblem, setCurrentProblem] = useState<GenerateMathProblemOutput | null>(null);
   const [score, setScore] = useState(0);
   const [pastScores, setPastScores] = useState<number[]>([]);
   const [feedback, setFeedback] = useState<'correct' | 'incorrect' | null>(null);
-  const [timeLeft, setTimeLeft] = useState(PROBLEM_TIMER_SECONDS);
+  
+  const [problemTimerDuration, setProblemTimerDuration] = useState(BASE_TIMER_SECONDS);
+  const [timeLeft, setTimeLeft] = useState(BASE_TIMER_SECONDS);
+
   const [holdTime, setHoldTime] = useState(ANSWER_HOLD_SECONDS);
   const [potentialAnswer, setPotentialAnswer] = useState<number | null>(null);
   const [lastSubmittedAnswer, setLastSubmittedAnswer] = useState<number | null>(null);
@@ -44,7 +51,7 @@ export default function MathChallengeClient() {
         });
         toastIdRef.current = id;
       }
-      setGameState('IDLE');
+      setGameState('DIFFICULTY_SELECTION');
       stopVideo();
     } else {
       if (toastIdRef.current) {
@@ -56,10 +63,13 @@ export default function MathChallengeClient() {
 
   const fetchNewProblem = useCallback(async () => {
     setGameState('LOADING_PROBLEM');
+    const timerDuration = BASE_TIMER_SECONDS + (difficulty * EXTRA_TIME_PER_DIFFICULTY);
+    setProblemTimerDuration(timerDuration);
+    
     try {
-      const problem = await generateMathProblem({ currentScore: score, pastScores });
+      const problem = await generateMathProblem({ difficulty, currentScore: score, pastScores });
       setCurrentProblem(problem);
-      setTimeLeft(PROBLEM_TIMER_SECONDS);
+      setTimeLeft(timerDuration);
       setGameState('PLAYING');
     } catch (error) {
       toast({
@@ -67,9 +77,9 @@ export default function MathChallengeClient() {
         title: 'AI Error',
         description: 'Could not generate a new math problem.',
       });
-      setGameState('IDLE');
+      setGameState('DIFFICULTY_SELECTION');
     }
-  }, [score, pastScores, toast]);
+  }, [difficulty, score, pastScores, toast]);
 
   const startGame = useCallback(async () => {
     setScore(0);
@@ -104,12 +114,10 @@ export default function MathChallengeClient() {
     if (gameState === 'PLAYING' && timeLeft > 0) {
       timer = setTimeout(() => setTimeLeft(t => t - 1), 1000);
     } else if (gameState === 'PLAYING' && timeLeft === 0) {
-      // Time's up for thinking
       handleAnswer('incorrect', null);
     } else if (gameState === 'HOLDING' && holdTime > 0) {
         timer = setTimeout(() => setHoldTime(t => t - 1), 1000);
     } else if (gameState === 'HOLDING' && holdTime === 0) {
-        // Successfully held the answer
         if (potentialAnswer !== null && currentProblem) {
             const isCorrect = potentialAnswer === currentProblem.solution;
             handleAnswer(isCorrect ? 'correct' : 'incorrect', potentialAnswer);
@@ -124,8 +132,7 @@ export default function MathChallengeClient() {
   useEffect(() => {
     if (gameState !== 'PLAYING' || !currentProblem) return;
 
-    // A potential answer is any number of fingers shown
-    if (detectedFingers > 0) {
+    if (detectedFingers > 0 && detectedFingers <= 10) {
         setPotentialAnswer(detectedFingers);
         setHoldTime(ANSWER_HOLD_SECONDS);
         setGameState('HOLDING');
@@ -135,14 +142,12 @@ export default function MathChallengeClient() {
   useEffect(() => {
     if(gameState === 'HOLDING') {
       if (detectedFingers !== potentialAnswer) {
-        // User changed their mind, go back to playing
         setPotentialAnswer(null);
         setGameState('PLAYING');
       }
     }
   }, [detectedFingers, potentialAnswer, gameState]);
 
-  // Canvas drawing logic
   useEffect(() => {
     const canvas = canvasRef.current;
     const video = videoRef.current;
@@ -151,7 +156,6 @@ export default function MathChallengeClient() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Match canvas size to video display size
     if (canvas.width !== video.clientWidth || canvas.height !== video.clientHeight) {
       canvas.width = video.clientWidth;
       canvas.height = video.clientHeight;
@@ -161,19 +165,17 @@ export default function MathChallengeClient() {
 
     if (landmarks.length > 0 && ['PLAYING', 'HOLDING'].includes(gameState)) {
       const primaryHand = landmarks[0];
-      const wrist = primaryHand[0]; // Wrist landmark
+      const wrist = primaryHand[0]; 
       if (!wrist) return;
 
       const x = (1 - wrist.x) * canvas.width;
       const y = wrist.y * canvas.height;
       
-      // Draw circle
       ctx.beginPath();
       ctx.arc(x, y - 40, 30, 0, 2 * Math.PI);
-      ctx.fillStyle = 'rgba(128, 90, 213, 0.8)'; // Primary color with opacity
+      ctx.fillStyle = 'rgba(128, 90, 213, 0.8)';
       ctx.fill();
 
-      // Draw text
       ctx.fillStyle = 'white';
       ctx.font = 'bold 32px sans-serif';
       ctx.textAlign = 'center';
@@ -184,24 +186,40 @@ export default function MathChallengeClient() {
 
 
   const renderGameState = () => {
-    if (gameState === 'IDLE') {
+    if (gameState === 'DIFFICULTY_SELECTION') {
       return (
-        <div className="flex flex-col items-center justify-center text-center">
-          <h2 className="font-headline text-3xl mb-4">Ready for a Challenge?</h2>
-          <p className="text-muted-foreground mb-8 max-w-md">
-            Use your hands to solve math problems. The camera will detect how many fingers you're holding up. Hold your answer to lock it in.
-          </p>
-          {isMobile && (
-             <Alert className="mb-4">
-              <Smartphone className="h-4 w-4" />
-              <AlertTitle>Mobile Experience</AlertTitle>
-              <AlertDescription>
-                This game is best experienced on a desktop. Performance may be slower on mobile devices.
-              </AlertDescription>
-            </Alert>
-          )}
-          <Button onClick={startGame} size="lg" className="font-headline text-lg">Start Game</Button>
-        </div>
+        <Card className="max-w-md w-full p-6">
+            <CardContent className="pt-6">
+              <h2 className="font-headline text-3xl mb-4 text-center">Math Challenge</h2>
+              <p className="text-muted-foreground mb-8 text-center">
+                Use your hands to answer math questions. The answer will always be between 0 and 10.
+              </p>
+              
+              <div className="space-y-4">
+                <Label htmlFor="difficulty-slider" className="text-center block">Difficulty Level: {difficulty}</Label>
+                <Slider
+                  id="difficulty-slider"
+                  min={1}
+                  max={10}
+                  step={1}
+                  value={[difficulty]}
+                  onValueChange={(value) => setDifficulty(value[0])}
+                />
+              </div>
+
+               {isMobile && (
+                 <Alert className="mt-6">
+                  <Smartphone className="h-4 w-4" />
+                  <AlertTitle>Mobile Experience</AlertTitle>
+                  <AlertDescription>
+                    For the best experience, play on a desktop. Performance may vary on mobile devices.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <Button onClick={startGame} size="lg" className="font-headline text-lg mt-8 w-full">Start Game</Button>
+            </CardContent>
+          </Card>
       );
     }
 
@@ -259,7 +277,7 @@ export default function MathChallengeClient() {
                {isThinking && (
                  <div className="mt-2 text-center">
                    <p className="text-sm text-muted-foreground">Show your answer!</p>
-                   <Progress value={(timeLeft / PROBLEM_TIMER_SECONDS) * 100} className="w-full h-2 mt-1" />
+                   <Progress value={(timeLeft / problemTimerDuration) * 100} className="w-full h-2 mt-1" />
                  </div>
               )}
                {isHolding && (
