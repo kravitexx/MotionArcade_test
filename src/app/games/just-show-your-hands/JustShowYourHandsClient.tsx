@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useHandTracking, type ModelType } from '@/hooks/use-hand-tracking';
+import { useHandTracking } from '@/hooks/use-hand-tracking';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Hand, Loader } from 'lucide-react';
@@ -16,33 +16,33 @@ const HAND_CONNECTIONS = [
 ];
 
 export default function JustShowYourHandsClient() {
-  const [model, setModel] = useState<ModelType | null>(null);
-  const { videoRef, landmarks, startVideo, stopVideo, isLoading, error } = useHandTracking({ modelType: model });
+  const [isGameStarted, setIsGameStarted] = useState(false);
+  const { videoRef, landmarks, startVideo, stopVideo, isLoading, error } = useHandTracking();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
-  const startGame = useCallback(async (selectedModel: ModelType) => {
-    setModel(selectedModel);
+  const startGame = useCallback(async () => {
+    setIsGameStarted(true);
   }, []);
 
   useEffect(() => {
-    if (model && !isLoading) {
+    if (isGameStarted) {
       startVideo().catch(err => {
         console.error("Failed to start video", err);
         // Error is handled in the hook, but we can reset the state here if needed
-        setModel(null);
+        setIsGameStarted(false);
       });
     }
-  }, [model, isLoading, startVideo]);
+  }, [isGameStarted, startVideo]);
   
   const handleBack = () => {
     stopVideo();
-    setModel(null);
+    setIsGameStarted(false);
   }
 
   // Canvas drawing logic for hand skeleton
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !model) return;
+    if (!canvas || !isGameStarted) return;
 
     const video = videoRef.current;
     if (!video || !video.srcObject) return;
@@ -89,10 +89,10 @@ export default function JustShowYourHandsClient() {
         }
       }
     }
-  }, [landmarks, model, videoRef]);
+  }, [landmarks, isGameStarted, videoRef]);
 
 
-  if (!model) {
+  if (!isGameStarted) {
     return (
       <div className="container mx-auto px-4 py-8 flex flex-col items-center justify-center flex-grow">
         <Card className="max-w-md text-center">
@@ -100,14 +100,13 @@ export default function JustShowYourHandsClient() {
             <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 text-primary">
               <Hand className="h-10 w-10" />
             </div>
-            <CardTitle className="font-headline text-3xl">Choose a Model</CardTitle>
+            <CardTitle className="font-headline text-3xl">Hand Tracking Demo</CardTitle>
             <CardDescription className="text-muted-foreground pt-2">
-              Select which MediaPipe model you want to use for hand tracking. The ONNX model may offer different performance characteristics.
+              This is a tech demo for real-time hand tracking. Press start to see a skeleton overlay on your hands.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            <Button onClick={() => startGame('standard')} size="lg">Standard MediaPipe (.task)</Button>
-            <Button onClick={() => startGame('onnx')} size="lg">ONNX MediaPipe</Button>
+            <Button onClick={startGame} size="lg">Start Demo</Button>
           </CardContent>
         </Card>
       </div>
@@ -141,7 +140,7 @@ export default function JustShowYourHandsClient() {
         </div>
         
          <div className="absolute top-4 left-4 z-20">
-            <Button onClick={handleBack}>Back to Selection</Button>
+            <Button onClick={handleBack}>Back to Start</Button>
         </div>
       </div>
     </div>
