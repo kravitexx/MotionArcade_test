@@ -28,7 +28,7 @@ export default function MathChallenge2Client() {
   const popAudioRef = useRef<HTMLAudioElement | null>(null);
   const bubbleRefs = useRef<(HTMLDivElement | null)[]>([]);
   const videoContainerRef = useRef<HTMLDivElement | null>(null);
-
+  const pointerRef = useRef<SVGSVGElement | null>(null);
 
   const [gameState, setGameState] = useState<GameState>('IDLE');
   const [currentProblem, setCurrentProblem] = useState<GenerateMathProblem2Output | null>(null);
@@ -133,31 +133,31 @@ export default function MathChallenge2Client() {
     return () => clearTimeout(timer);
   }, [gameState, timeLeft, handleAnswer, resetForNextQuestion]);
 
-  // Bubble popping logic
+  // Pointer and Bubble popping logic
   useEffect(() => {
     if (gameState !== 'PLAYING' || !landmarks.length || !videoContainerRef.current) return;
     
     const videoContainer = videoContainerRef.current;
+    const pointer = pointerRef.current;
     
     // Index finger tip is landmark 8
     const indexTip = landmarks[0][8]; 
-    if (!indexTip) return;
+    if (!indexTip || !pointer) return;
 
-    // The landmarks are normalized (0-1). We need to convert them to absolute
-    // coordinates on the page.
     const videoRect = videoContainer.getBoundingClientRect();
-    // The video is mirrored, so we flip the x-coordinate.
-    const tipX = videoRect.left + (1 - indexTip.x) * videoRect.width;
-    const tipY = videoRect.top + indexTip.y * videoRect.height;
+    const tipX = (1 - indexTip.x) * videoRect.width;
+    const tipY = indexTip.y * videoRect.height;
 
-
+    // Update pointer position imperatively for smoothness
+    pointer.style.transform = `translate(${tipX}px, ${tipY}px)`;
+    
     bubbleRefs.current.forEach((bubbleDiv, index) => {
         if (!bubbleDiv || bubbles[index].popped) return;
         
-        // Get bubble position relative to the viewport
         const bubbleRect = bubbleDiv.getBoundingClientRect();
-        const bubbleX = bubbleRect.left + bubbleRect.width / 2;
-        const bubbleY = bubbleRect.top + bubbleRect.height / 2;
+        // Convert to be relative to the video container, not the viewport
+        const bubbleX = (bubbleRect.left - videoRect.left) + bubbleRect.width / 2;
+        const bubbleY = (bubbleRect.top - videoRect.top) + bubbleRect.height / 2;
         const bubbleRadius = bubbleRect.width / 2;
         
         const distance = Math.sqrt(Math.pow(tipX - bubbleX, 2) + Math.pow(tipY - bubbleY, 2));
@@ -171,7 +171,6 @@ export default function MathChallenge2Client() {
             
             setBubbles(prevBubbles => {
                 const newBubbles = [...prevBubbles];
-                // Check if already popped to prevent multiple triggers from one interaction
                 if (newBubbles[index] && !newBubbles[index].popped) {
                     newBubbles[index].popped = true;
                     const isCorrect = newBubbles[index].value === currentProblem?.correctAnswer;
@@ -221,10 +220,10 @@ export default function MathChallenge2Client() {
                 <div
                   key={index}
                   ref={el => bubbleRefs.current[index] = el}
-                  className={`flex items-center justify-center rounded-full border-4 border-primary bg-primary/30 text-white font-bold transition-all duration-300 animate-float-gooey ${bubble.popped ? 'animate-pop' : ''} ${bubbleSize}`}
+                  className={`flex items-center justify-center font-bold text-white transition-all duration-300 animate-float-gooey bubble-shiny ${bubble.popped ? 'animate-pop' : ''} ${bubbleSize}`}
                   style={{ animationDelay: `${index * 150}ms` }}
                 >
-                  {bubble.value}
+                  <span className="drop-shadow-lg">{bubble.value}</span>
                 </div>
               ))}
             </div>
@@ -241,13 +240,8 @@ export default function MathChallenge2Client() {
             </div>
           )}
         
-          {gameState === 'PLAYING' && landmarks.length > 0 && landmarks[0][8] && videoRef.current && (
-             <Target className="absolute text-cyan-400" style={{
-                left: `${(1-landmarks[0][8].x) * 100}%`,
-                top: `${landmarks[0][8].y * 100}%`,
-                transform: 'translate(-50%, -50%)',
-                pointerEvents: 'none'
-             }}/>
+          {gameState === 'PLAYING' && (
+             <Target ref={pointerRef} className="absolute top-0 left-0 text-cyan-400 -translate-x-1/2 -translate-y-1/2 transition-transform duration-75 ease-out" style={{pointerEvents: 'none'}} />
           )}
 
         </div>
