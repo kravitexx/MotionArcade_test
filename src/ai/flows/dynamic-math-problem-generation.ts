@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview An AI agent that generates dynamic math problems based on the player's score and selected difficulty.
@@ -39,10 +40,15 @@ const prompt = ai.definePrompt({
   3.  The problem can be a symbolic arithmetic problem (e.g., "4 + 2") or a short word problem.
 
   Here is the selected difficulty level (1=easy, 10=hard): {{{difficulty}}}
-  -   Level 1-3: Use simple, single-step addition or subtraction. (e.g., "3 + 5" or "8 - 2")
-  -   Level 4-5: Introduce single-step multiplication or simple division that results in a whole number. Word problems should be simple.
-  -   Level 6-7: Create two-step problems. Use parentheses for symbolic problems. Word problems should require two calculations. (e.g., "A farmer has 3 pens, and each pen has 3 sheep. If he sells 2 sheep, how many are left?")
-  -   Level 8-9: Create three-step problems. The intermediate calculations can go above 10, but the final answer MUST be between 0 and 10. Word problems are strongly preferred. (e.g., "You have 5 apples. You get 5 more, then eat half. How many are left?")
+  -   Level 1: Use simple, single-step addition only. (e.g., "3 + 5" or "1 + 2")
+  -   Level 2: Use simple, single-step subtraction only. (e.g., "8 - 2" or "5 - 1")
+  -   Level 3: Use a mix of simple, single-step addition and subtraction. (e.g., "4 + 3" or "9 - 5")
+  -   Level 4: Introduce single-step multiplication or simple division that results in a whole number. Word problems should be very simple. (e.g., "2 * 4" or "How many wheels on two bikes?")
+  -   Level 5: A mix of all four single-step operations (addition, subtraction, multiplication, division). Word problems can be slightly more descriptive.
+  -   Level 6: Create two-step problems. Use parentheses for symbolic problems. Word problems should require two calculations. (e.g., "(2 * 3) + 4" or "A farmer has 3 pens, and each pen has 3 sheep. If he sells 2 sheep, how many are left?")
+  -   Level 7: More complex two-step problems. Introduce concepts like "half of" for even numbers.
+  -   Level 8: Create three-step problems. The intermediate calculations can go above 10, but the final answer MUST be between 0 and 10. Word problems are strongly preferred. (e.g., "You have 5 apples. You get 5 more, then eat half. How many are left?")
+  -   Level 9: More complex three-step problems. The logic should be less direct.
   -   Level 10: Create a complex, multi-step (3 or 4 steps) word problem that requires careful reading and logical steps. The problem should be challenging but result in a simple integer answer between 0 and 10.
 
   Generate a math problem and the solution to that problem.
@@ -87,3 +93,5 @@ const generateMathProblemFlow = ai.defineFlow(
     return output!;
   }
 );
+
+    
