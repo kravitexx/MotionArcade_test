@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calculator, BrainCircuit, Waves, Pencil } from 'lucide-react';
+import { Calculator, BrainCircuit, Waves, Pencil, Hand } from 'lucide-react';
 import Link from 'next/link';
 
 const games = [
@@ -27,6 +27,12 @@ const games = [
     description: 'Draw the shape you see on screen using your index finger. Use gestures to switch between pencil and eraser. A creative challenge!',
     href: '/games/sketch-and-score',
     icon: <Pencil className="h-8 w-8 text-primary" />,
+  },
+  {
+    title: 'Just show your hands',
+    description: 'A tech demo of the hand tracking engine. Choose between different models and see the real-time hand skeleton tracking.',
+    href: '/games/just-show-your-hands',
+    icon: <Hand className="h-8 w-8 text-primary" />,
   },
 ];
 

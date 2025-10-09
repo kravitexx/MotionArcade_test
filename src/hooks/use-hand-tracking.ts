@@ -5,6 +5,14 @@ import { HandLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
 import type { HandLandmarkerResult, Landmark, Handedness } from '@mediapipe/tasks-vision';
 import { useIsMobile } from './use-mobile';
 
+import { countFingers } from '@/lib/finger-counting';
+
+export type ModelType = 'standard' | 'onnx';
+
+type HandTrackingOptions = {
+  modelType?: ModelType | null;
+}
+
 type HandTrackingHook = {
   videoRef: React.RefObject<HTMLVideoElement>;
   detectedFingers: number;
@@ -16,9 +24,8 @@ type HandTrackingHook = {
   landmarks: Landmark[][];
 };
 
-import { countFingers } from '@/lib/finger-counting';
 
-export function useHandTracking(): HandTrackingHook {
+export function useHandTracking({ modelType = 'standard' }: HandTrackingOptions = {}): HandTrackingHook {
   const videoRef = useRef<HTMLVideoElement>(null);
   const requestRef = useRef<number>();
   const handLandmarkerRef = useRef<HandLandmarker | null>(null);
@@ -118,14 +125,29 @@ export function useHandTracking(): HandTrackingHook {
 
   useEffect(() => {
     async function initialize() {
+      if (!modelType) {
+        setIsLoading(false);
+        return;
+      };
+
       try {
         setIsLoading(true);
         const vision = await FilesetResolver.forVisionTasks(
           'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
         );
+        
+        let modelPath: string;
+        if (modelType === 'onnx') {
+            // Using a publicly available ONNX model for hand detection.
+            modelPath = 'https://storage.googleapis.com/mediapipe-assets/hand_landmarker.onnx';
+        } else {
+            // Standard MediaPipe model
+            modelPath = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+        }
+
         const handLandmarker = await HandLandmarker.createFromOptions(vision, {
           baseOptions: {
-            modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
+            modelAssetPath: modelPath,
             delegate: 'GPU',
           },
           runningMode: 'VIDEO',
@@ -147,7 +169,7 @@ export function useHandTracking(): HandTrackingHook {
       stopVideo();
       handLandmarkerRef.current?.close();
     };
-  }, [stopVideo]);
+  }, [stopVideo, modelType]);
 
 
   return { videoRef, detectedFingers, startVideo, stopVideo, isLoading, error, handedness, landmarks };

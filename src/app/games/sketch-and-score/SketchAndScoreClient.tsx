@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/hooks/use-toast';
 import { Loader, Pencil, Eraser, Sparkles, Circle, Square, Triangle, Star, Heart, ArrowRight, Home, CheckCircle2, XCircle, Hand } from 'lucide-react';
 
-type GameState = 'HAND_SELECTION' | 'IDLE' | 'LOADING_CAMERA' | 'GET_READY' | 'COUNTDOWN' | 'DRAWING' | 'SUBMITTING' | 'FEEDBACK';
+type GameState = 'IDLE' | 'LOADING_CAMERA' | 'GET_READY' | 'COUNTDOWN' | 'DRAWING' | 'SUBMITTING' | 'FEEDBACK';
 type DrawingTool = 'PENCIL' | 'ERASER';
 type HandChoice = 'Left' | 'Right';
 
@@ -29,6 +29,7 @@ const shapeIcons: Record<string, React.ReactNode> = {
 
 
 export default function SketchAndScoreClient() {
+  const [drawingHand, setDrawingHand] = useState<HandChoice | null>(null);
   const { videoRef, landmarks, handedness, startVideo, stopVideo, isLoading: isHandTrackingLoading, error: handTrackingError, detectedFingers } = useHandTracking();
   const drawingCanvasRef = useRef<HTMLCanvasElement>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null); // Canvas for UI overlays
@@ -38,7 +39,6 @@ export default function SketchAndScoreClient() {
   const { toast } = useToast();
 
   const [gameState, setGameState] = useState<GameState>('IDLE');
-  const [drawingHand, setDrawingHand] = useState<HandChoice | null>(null);
   const [shapeToDraw, setShapeToDraw] = useState<string | null>(null);
   const [score, setScore] = useState(0);
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
@@ -77,7 +77,8 @@ export default function SketchAndScoreClient() {
     }
   }, [toast]);
   
-  const startGame = useCallback(async () => {
+  const startGame = useCallback(async (hand: HandChoice) => {
+    setDrawingHand(hand);
     setScore(0);
     setGameState('LOADING_CAMERA');
     try {
@@ -88,11 +89,6 @@ export default function SketchAndScoreClient() {
       setGameState('IDLE');
     }
   }, [startVideo, fetchNewShape]);
-
-  const handleSelectHand = (hand: HandChoice) => {
-    setDrawingHand(hand);
-    startGame();
-  }
 
   // Countdown logic
   useEffect(() => {
@@ -172,28 +168,25 @@ export default function SketchAndScoreClient() {
       if (!handLandmarks || handLandmarks.length < 21) return false;
 
       // Check if index finger is extended
-      const indexAngle = getAngle(handLandmarks[5], handLandmarks[6], handLandmarks[8]);
-      const indexFingerExtended = indexAngle > 160;
+      const indexTip = handLandmarks[8];
+      const indexPip = handLandmarks[6];
+      const indexMcp = handLandmarks[5];
+      const indexWrist = handLandmarks[0];
 
       // Check if other fingers are curled
-      const middleAngle = getAngle(handLandmarks[9], handLandmarks[10], handLandmarks[12]);
-      const ringAngle = getAngle(handLandmarks[13], handLandmarks[14], handLandmarks[16]);
-      const pinkyAngle = getAngle(handLandmarks[17], handLandmarks[18], handLandmarks[20]);
+      const middleTip = handLandmarks[12];
+      const middlePip = handLandmarks[10];
+      const ringTip = handLandmarks[16];
+      const ringPip = handLandmarks[14];
+      const pinkyTip = handLandmarks[20];
+      const pinkyPip = handLandmarks[18];
 
-      const middleFingerCurled = middleAngle < 100;
-      const ringFingerCurled = ringAngle < 100;
-      const pinkyFingerCurled = pinkyAngle < 100;
-
-      return indexFingerExtended && middleFingerCurled && ringFingerCurled && pinkyFingerCurled;
-  };
-
-  const getAngle = (a: any, b: any, c: any) => {
-    const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
-    let angle = Math.abs(radians * 180.0 / Math.PI);
-    if (angle > 180.0) {
-      angle = 360 - angle;
-    }
-    return angle;
+      return (
+        indexTip.y < indexPip.y &&
+        middleTip.y > middlePip.y &&
+        ringTip.y > ringPip.y &&
+        pinkyTip.y > pinkyPip.y
+      );
   };
   
   const isPinching = (handLandmarks: any[]): boolean => {
@@ -261,13 +254,15 @@ export default function SketchAndScoreClient() {
             } else if (pointing) {
                 currentTool = 'PENCIL';
                 activeLandmark = drawingHandLandmarks[8];
+            } else {
+                currentTool = 'PENCIL'; // Default to pencil if no clear gesture
+            }
+            
+            if (drawingTool !== currentTool) {
+                setDrawingTool(currentTool);
             }
 
-            if (currentTool && activeLandmark) {
-                if(drawingTool !== currentTool) {
-                    setDrawingTool(currentTool);
-                }
-                
+            if (activeLandmark) {
                 const drawingCtx = getDrawingContext();
                 if (drawingCanvasRef.current && drawingCtx) {
                     const canvas = drawingCanvasRef.current;
@@ -412,8 +407,8 @@ export default function SketchAndScoreClient() {
                       </CardDescription>
                   </CardHeader>
                   <CardContent className="flex justify-center gap-4">
-                      <Button onClick={() => handleSelectHand('Left')} size="lg" className="font-headline text-xl">Left Hand</Button>
-                      <Button onClick={() => handleSelectHand('Right')} size="lg" className="font-headline text-xl">Right Hand</Button>
+                      <Button onClick={() => startGame('Left')} size="lg" className="font-headline text-xl">Left Hand</Button>
+                      <Button onClick={() => startGame('Right')} size="lg" className="font-headline text-xl">Right Hand</Button>
                   </CardContent>
               </Card>
           </div>
