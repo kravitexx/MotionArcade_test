@@ -95,9 +95,9 @@ export default function PingPongClient() {
     // Move paddle with hand
     if (landmarks && landmarks.length > 0) {
       const hand = landmarks[0];
-      const wrist = hand[0]; // Assuming wrist is the first landmark
-      if (wrist) {
-        const newPaddleX = (1 - wrist.x) * gameCanvas.width - PADDLE_WIDTH / 2;
+      const indexFinger = hand[8]; // Using index finger tip (landmark 8) for more precise control
+      if (indexFinger) {
+        const newPaddleX = (1 - indexFinger.x) * gameCanvas.width - PADDLE_WIDTH / 2;
         playerPaddle.current.x = Math.max(0, Math.min(newPaddleX, gameCanvas.width - PADDLE_WIDTH));
       }
     }
