@@ -1,9 +1,9 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calculator, BrainCircuit, Waves, Pencil, Hand } from 'lucide-react';
+import { Calculator, BrainCircuit, Waves, Pencil, Gamepad2, Hand } from 'lucide-react';
 import Link from 'next/link';
 
-const games = [
+const allGames = [
   {
     title: 'Math Challenge',
     description: 'Solve dynamic math problems using your hands! Show the correct number of fingers to answer questions and test your arithmetic skills.',
@@ -34,6 +34,12 @@ const games = [
     href: '/games/just-show-your-hands',
     icon: <Hand className="h-8 w-8 text-primary" />,
   },
+  {
+    title: 'Ping Pong',
+    description: 'A classic game of single-player ping pong. Control the paddle with your hand and try to keep the ball in play.',
+    href: '/games/ping-pong',
+    icon: <Gamepad2 className="h-8 w-8 text-primary" />,
+  }
 ];
 
 export default function GamesPage() {
@@ -42,8 +48,8 @@ export default function GamesPage() {
       <h1 className="mb-8 text-center font-headline text-4xl font-bold tracking-tight md:text-5xl">
         Choose Your Game
       </h1>
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {games.map((game) => (
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 mt-6">
+        {allGames.map((game) => (
           <Card key={game.title} className="flex flex-col">
             <CardHeader className="flex-row items-start gap-4 space-y-0">
               <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-primary/10">
