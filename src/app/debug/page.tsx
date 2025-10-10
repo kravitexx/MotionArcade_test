@@ -54,6 +54,11 @@ export default function DebugPage() {
     () => generateShapeToDraw()
   );
 
+  const testAirPiano = () => handleTest(
+    'Air Piano',
+    () => initializeHandTracking()
+  );
+
   return (
     <div className="container mx-auto px-4 py-12">
       <Card className="max-w-2xl mx-auto">
@@ -82,6 +87,10 @@ export default function DebugPage() {
             <Button onClick={testSketchAndScore} disabled={!!loadingFlow} className="flex-1">
               {loadingFlow === 'Sketch & Score' && <Loader className="mr-2 h-4 w-4 animate-spin" />}
               Test Sketch & Score
+            </Button>
+            <Button onClick={testAirPiano} disabled={!!loadingFlow} className="flex-1">
+              {loadingFlow === 'Air Piano' && <Loader className="mr-2 h-4 w-4 animate-spin" />}
+              Test Air Piano
             </Button>
           </div>
 

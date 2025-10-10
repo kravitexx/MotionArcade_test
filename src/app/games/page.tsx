@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calculator, BrainCircuit, Waves, Pencil, Gamepad2, Hand } from 'lucide-react';
+import { Calculator, BrainCircuit, Waves, Pencil, Gamepad2, Hand, Music } from 'lucide-react';
 import Link from 'next/link';
 
 const allGames = [
@@ -39,7 +39,13 @@ const allGames = [
     description: 'A classic game of single-player ping pong. Control the paddle with your hand and try to keep the ball in play.',
     href: '/games/ping-pong',
     icon: <Gamepad2 className="h-8 w-8 text-primary" />,
-  }
+  },
+  {
+    title: 'Air Piano',
+    description: 'Play a virtual piano by hitting falling notes with your fingers in the air. A rhythm game that tests your timing and coordination.',
+    href: '/games/air-piano',
+    icon: <Music className="h-8 w-8 text-primary" />,
+  },
 ];
 
 export default function GamesPage() {
